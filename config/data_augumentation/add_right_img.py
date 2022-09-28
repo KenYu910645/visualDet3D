@@ -4,6 +4,7 @@ import numpy as np
 
 cfg = edict()
 cfg.obj_types = ['Car']
+cfg.exp = 'baseline'
 
 ## trainer
 trainer = edict(
@@ -24,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/visualDet3D/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/visualDet3D/kitti/testing' # "/data/kitti_obj/testing" # used in visualDet3D/data/.../dataset
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/my_exp' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/data_augumentation/add_right_img' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 if not os.path.isdir(path.project_path):
     os.mkdir(path.project_path)
 path.project_path = os.path.join(path.project_path, 'Mono3D')
@@ -83,6 +84,7 @@ data = edict(
     test_dataset  = "KittiMonoTestDataset",
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'train.txt'),
     val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'val.txt'),
+    use_right_image = True,
 )
 
 data.augmentation = edict(
@@ -93,10 +95,10 @@ data.augmentation = edict(
 )
 data.train_augmentation = [
     edict(type_name='ConvertToFloat'),
-    edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
+    # edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
     edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
     edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
-    edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
+    # edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
     edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
 ]
 data.test_augmentation = [
@@ -110,6 +112,7 @@ cfg.data = data
 ## networks
 detector = edict()
 detector.obj_types = cfg.obj_types
+detector.exp = cfg.exp
 detector.name = 'GroundAwareYolo3D'
 detector.backbone = edict(
     depth=101,
@@ -119,6 +122,7 @@ detector.backbone = edict(
     out_indices=(2, ),
     norm_eval=False,
     dilations=(1, 1, 1),
+    exp=cfg.exp,
 )
 head_loss = edict(
     fg_iou_threshold = 0.5,
@@ -161,7 +165,8 @@ detector.head = edict(
     anchors_cfg     = anchors,
     layer_cfg       = head_layer,
     loss_cfg        = head_loss,
-    test_cfg        = head_test
+    test_cfg        = head_test,
+    exp             = cfg.exp,
 )
 detector.anchors = anchors
 detector.loss = head_loss
