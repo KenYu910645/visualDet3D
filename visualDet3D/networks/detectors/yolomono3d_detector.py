@@ -8,6 +8,7 @@ from visualDet3D.networks.detectors.yolomono3d_core import YoloMono3DCore
 from visualDet3D.networks.heads.detection_3d_head import AnchorBasedDetection3DHead
 from visualDet3D.networks.lib.blocks import AnchorFlatten
 from visualDet3D.networks.lib.look_ground import LookGround
+import pickle
 
 class GroundAwareHead(AnchorBasedDetection3DHead):
     def init_layers(self, num_features_in,
@@ -31,25 +32,40 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         self.cls_feature_extraction[-2].weight.data.fill_(0)
         self.cls_feature_extraction[-2].bias.data.fill_(0)
 
-        self.reg_feature_extraction = nn.Sequential(
-            LookGround(reg_feature_size),
-            nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-            nn.BatchNorm2d(reg_feature_size),
-            nn.ReLU(),
-            nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-            nn.BatchNorm2d(reg_feature_size),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-            AnchorFlatten(num_reg_output)
-        )
-
+        print(f"GroundAwareHead  self.exp = {self.exp}")
+        if self.exp == "NA_NLG": # Without LookGround
+            self.reg_feature_extraction = nn.Sequential(
+                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(),
+                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
+                AnchorFlatten(num_reg_output)
+            )
+        else:
+            self.reg_feature_extraction = nn.Sequential(
+                LookGround(num_features_in, self.exp),
+                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(),
+                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
+                AnchorFlatten(num_reg_output)
+            )
+        
         self.reg_feature_extraction[-2].weight.data.fill_(0)
         self.reg_feature_extraction[-2].bias.data.fill_(0)
 
     def forward(self, inputs):
         cls_preds = self.cls_feature_extraction(inputs['features'])
-        reg_preds = self.reg_feature_extraction(inputs)
-
+        if self.exp == "NA_NLG":
+            reg_preds = self.reg_feature_extraction(inputs['features'])
+        else:
+            reg_preds = self.reg_feature_extraction(inputs)
         return cls_preds, reg_preds
 
 @DETECTOR_DICT.register_module
@@ -61,13 +77,14 @@ class Yolo3D(nn.Module):
         super(Yolo3D, self).__init__()
 
         self.obj_types = network_cfg.obj_types
-
+        
+        self.exp = network_cfg.exp
+        print(f"Yolo3D experiment setting = {self.exp}")
         self.build_head(network_cfg)
 
         self.build_core(network_cfg)
 
         self.network_cfg = network_cfg
-
 
     def build_core(self, network_cfg):
         self.core = YoloMono3DCore(network_cfg.backbone)
@@ -87,16 +104,48 @@ class Yolo3D(nn.Module):
             cls_loss, reg_loss: tensor of losses
             loss_dict: [key, value] pair for logging
         """
+        
+        # print(f"img_batch.shape = {img_batch.shape}") # [8, 3, 288, 1280]
+        features  = self.core(dict(image=img_batch, P2=P2)) # [8, 1024, 18, 80]
+       
+        # For Experiment C
+        if self.exp == "C":
+            # print(f"features.shape = {features.shape}")
+            grid = np.stack(self.build_tensor_grid([features.shape[2], features.shape[3]]), axis=0) #[2, h, w]
+            grid = features.new(grid).unsqueeze(0).repeat(features.shape[0], 1, 1, 1) #[1, 2, h, w]
+            features = torch.cat([features, grid], dim=1)
+            # print(f"features.shape = {features.shape}")
 
-        features  = self.core(dict(image=img_batch, P2=P2))
         cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch))
-
-        anchors = self.bbox_head.get_anchor(img_batch, P2)
+        # print(f"cls_preds.shape = {cls_preds.shape}") # [8, 46080, 2]
+        # print(f"reg_preds.shape = {reg_preds.shape}") # [8, 46080, 12] 
+        anchors = self.bbox_head.get_anchor(img_batch, P2) # ([8, 1024, 18, 80])
+        # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
+        # print(f"anchors['mask'] = {anchors['mask'].shape}") # [8, 46080]
+        # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2], z, sin(\t), cos(\t)
 
         cls_loss, reg_loss, loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
 
         return cls_loss, reg_loss, loss_dict
     
+
+    def build_tensor_grid(self, shape):
+        """
+            For CoordConv exp C
+            input:
+                shape = (h, w)
+            output:
+                yy_grid = (h, w)
+                xx_grid = (h, w)
+        """
+        h, w = shape[0], shape[1]
+        x_range = np.arange(h, dtype=np.float32)
+        y_range = np.arange(w, dtype=np.float32)
+        yy, xx  = np.meshgrid(y_range, x_range)
+        yy_grid = 2.0 * yy / float(w) - 1 # Make sure value is [-1, 1]
+        xx_grid = 2.0 * xx / float(h) - 1
+        return yy_grid, xx_grid
+
     def test_forward(self, img_batch, P2):
         """
         Args:
@@ -109,8 +158,20 @@ class Yolo3D(nn.Module):
                         bbox = [bbox2d(length=4) , cx, cy, z, w, h, l, alpha]
         """
         assert img_batch.shape[0] == 1 # we recommmend image batch size = 1 for testing
+        
+        # This is for visulization 
+        # with open('img_batch.pkl', 'wb') as f:
+        #     pickle.dump(img_batch, f)
+        #     print(f"Write img_batch to img_batch.pkl")
 
         features  = self.core(dict(image=img_batch, P2=P2))
+
+        # For experiment C
+        if self.exp == "C":
+            grid = np.stack(self.build_tensor_grid([features.shape[2], features.shape[3]]), axis=0) #[2, h, w]
+            grid = features.new(grid).unsqueeze(0).repeat(features.shape[0], 1, 1, 1) #[1, 2, h, w]
+            features = torch.cat([features, grid], dim=1)
+
         cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2))
 
         anchors = self.bbox_head.get_anchor(img_batch, P2)

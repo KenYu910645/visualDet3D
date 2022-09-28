@@ -81,8 +81,15 @@ def evaluate_kitti_obj(cfg:EasyDict,
     test_func = PIPELINE_DICT[cfg.trainer.test_func]
     projector = BBox3dProjector().cuda()
     backprojector = BackProjection().cuda()
+    
+    # Added by spiderkiller, able to output file_name.txt 
+    with open(cfg.data.val_split_file, 'r') as f:
+        fn_list = [int(i) for i in f.read().splitlines()]
+    print(f"fn_list loaded {len(fn_list)} lines.")
+    assert len(fn_list) == len(dataset_val), 'Number of validation data are not matched, go to /home/lab530/KenYu/visualDet3D/visualDet3D/networks/pipelines/evaluators.py'
+
     for index in tqdm(range(len(dataset_val))):
-        test_one(cfg, index, dataset_val, model, test_func, backprojector, projector, result_path)
+        test_one(cfg, index, fn_list, dataset_val, model, test_func, backprojector, projector, result_path)
     if "is_running_test_set" in cfg and cfg["is_running_test_set"]:
         print("Finish evaluation.")
         return
@@ -98,7 +105,7 @@ def evaluate_kitti_obj(cfg:EasyDict,
             writer.add_text("validation result {}".format(class_index), result_text.replace(' ', '&nbsp;').replace('\n', '  \n'), epoch_num + 1)
         print(result_text)
 
-def test_one(cfg, index, dataset, model, test_func, backprojector:BackProjection, projector:BBox3dProjector, result_path):
+def test_one(cfg, index, fn_list, dataset, model, test_func, backprojector:BackProjection, projector:BBox3dProjector, result_path):
     data = dataset[index]
     if isinstance(data['calib'], list):
         P2 = data['calib'][0]
@@ -128,7 +135,7 @@ def test_one(cfg, index, dataset, model, test_func, backprojector:BackProjection
         bbox_2d[:, 0:4:2] *= scale_x
         bbox_2d[:, 1:4:2] *= scale_y
 
-        write_result_to_file(result_path, index, scores, bbox_2d, bbox_3d_state_3d, thetas, obj_names)
+        write_result_to_file(result_path, fn_list[index], scores, bbox_2d, bbox_3d_state_3d, thetas, obj_names)
     else:
         if "crop_top" in cfg.data.augmentation and cfg.data.augmentation.crop_top is not None:
             crop_top = cfg.data.augmentation.crop_top

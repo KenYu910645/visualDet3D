@@ -21,7 +21,7 @@ from copy import deepcopy
 from visualDet3D.networks.utils import BBox3dProjector
 from visualDet3D.networks.utils.registry import DATASET_DICT
 import sys
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 ros_py_path = '/opt/ros/kinetic/lib/python2.7/dist-packages'
 if sys.version_info > (3, 0) and ros_py_path in sys.path:
     #Python 3, compatible with a naive ros environment
@@ -57,6 +57,7 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         self.is_train = is_train
         self.obj_types = obj_types
         self.use_right_image = getattr(cfg.data, 'use_right_image', True)
+        print(f"self.use_right_image = {self.use_right_image}")
         self.is_reproject = getattr(cfg.data, 'is_reproject', True) # if reproject 2d
 
     def _reproject(self, P2:np.ndarray, transformed_label:List[KittiObj]) -> Tuple[List[KittiObj], np.ndarray]:
@@ -148,7 +149,11 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         label = [item['label'] for item in batch]
         bbox2ds = [item['bbox2d'] for item in batch]
         bbox3ds = [item['bbox3d'] for item in batch]
-        return torch.from_numpy(rgb_images).float(), torch.tensor(calib).float(), label, bbox2ds, bbox3ds
+        # This line will cause warning: 
+        # Creating a tensor from a list of numpy.ndarrays is extremely slow. 
+        # Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor.
+        # add np.array() to avoid warning.
+        return torch.from_numpy(rgb_images).float(), torch.tensor(np.array(calib)).float(), label, bbox2ds, bbox3ds
 
 @DATASET_DICT.register_module
 class NuscMonoDataset(KittiMonoDataset):

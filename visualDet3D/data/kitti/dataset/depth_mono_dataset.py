@@ -16,7 +16,7 @@ import numpy as np
 from copy import deepcopy
 import sys
 from tqdm import tqdm
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 ros_py_path = '/opt/ros/kinetic/lib/python2.7/dist-packages'
 import skimage.measure
 if sys.version_info > (3, 0) and ros_py_path in sys.path:
@@ -82,6 +82,8 @@ class KittiDepthMonoDataset(torch.utils.data.Dataset):
     """Some Information about KittiDataset"""
     def __init__(self, cfg, split='training'):
         super(KittiDepthMonoDataset, self).__init__()
+        # print(f"cfg.path.raw_path = {cfg.path.raw_path}")
+        # print(f"cfg.path.depth_path = {cfg.path.depth_path}")
         raw_path    = cfg.path.raw_path
         depth_paths  = cfg.path.depth_path if isinstance(cfg.path.depth_path, list) else [cfg.path.depth_path]
         aug_cfg     = cfg.data.augmentation

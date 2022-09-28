@@ -24,7 +24,7 @@ from copy import deepcopy
 from visualDet3D.networks.utils import BBox3dProjector
 from visualDet3D.networks.utils.registry import DATASET_DICT
 import sys
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 ros_py_path = '/opt/ros/kinetic/lib/python2.7/dist-packages'
 if sys.version_info > (3, 0) and ros_py_path in sys.path:
     #Python 3, compatible with a naive ros environment

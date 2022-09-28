@@ -1,5 +1,6 @@
 
 import importlib
+from re import L
 import fire
 import os
 import copy
@@ -32,6 +33,8 @@ def main(config:str="config/config.py",
     else:
         dataset_name = cfg.data.val_dataset
     dataset = DATASET_DICT[dataset_name](cfg, split_to_test)
+
+    print(f"len(dataset) - {len(dataset)}")
 
     # Create the model
     detector = DETECTOR_DICT[cfg.detector.name](cfg.detector)

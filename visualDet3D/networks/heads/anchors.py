@@ -179,7 +179,11 @@ def generate_anchors(base_size=16, ratios=None, scales=None):
     # transform from (x_ctr, y_ctr, w, h) -> (x1, y1, x2, y2)
     anchors[:, 0::2] -= np.tile(anchors[:, 2] * 0.5, (2, 1)).T
     anchors[:, 1::2] -= np.tile(anchors[:, 3] * 0.5, (2, 1)).T
-
+    # print(f"anchors = {anchors.shape}") # (32, 4)
+    # import pickle
+    # with open("anchors.pkl", 'wb') as f:
+    #     pickle.dump(anchors, f)
+    #     print("Write anchors to anchors.pkl")
     return anchors
 
 def compute_shape(image_shape, pyramid_levels):

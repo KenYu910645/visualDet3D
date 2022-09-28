@@ -102,7 +102,9 @@ class ResNet(nn.Module):
                        out_indices:Tuple[int, ...]=(-1, 0, 1, 2, 3),
                        frozen_stages:int=-1,
                        norm_eval:bool=True,
+                       exp:str=''
                        ):
+        self.exp = exp
         self.inplanes = 64
         super(ResNet, self).__init__()
 
@@ -116,6 +118,7 @@ class ResNet(nn.Module):
         assert max(out_indices) < num_stages
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.coordconv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False) # This is for exp B
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -159,7 +162,7 @@ class ResNet(nn.Module):
             if self.norm_eval:
                 self.freeze_bn()
 
-    def freeze_stages(self):
+    def freeze_stages(self): # TODO froze coordconv too? maybe redo experiment B
         if self.frozen_stages >= 0:
             self.conv1.eval()
             self.bn1.eval()
@@ -184,7 +187,12 @@ class ResNet(nn.Module):
     def forward(self, img_batch):
         
         outs = []
-        x = self.conv1(img_batch)
+        # For Experiment B
+        if self.exp == 'B':
+            x = self.coordconv1(img_batch) # 5 channels
+        else:
+            x = self.conv1(img_batch) # Original, 3 channels
+            
         x = self.bn1(x)
         x = self.relu(x)
         if -1 in self.out_indices:

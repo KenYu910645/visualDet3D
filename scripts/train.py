@@ -68,7 +68,7 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     torch.cuda.set_device(gpu)
     if is_distributed:
         torch.distributed.init_process_group(backend='nccl', init_method='env://')
-    print(local_rank)
+    print(local_rank) # -1
  
     ## define datasets and dataloader.
     dataset_train = DATASET_DICT[cfg.data.train_dataset](cfg)
@@ -80,14 +80,21 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     dataloader_val = DataLoader(dataset_val, num_workers=cfg.data.num_workers,
                                 batch_size=cfg.data.batch_size, collate_fn=dataset_val.collate_fn, shuffle=False, drop_last=True)
 
+    #
+    print(f"Experiment Setting: {cfg.exp}")
+    
     ## Create the model
     detector = DETECTOR_DICT[cfg.detector.name](cfg.detector)
+    # print(detector)
 
     ## Load old model if needed
     old_checkpoint = getattr(cfg.path, 'pretrained_checkpoint', None)
+    print(f"old_checkpoint = {old_checkpoint}") # None
     if old_checkpoint is not None:
         state_dict = torch.load(old_checkpoint, map_location='cpu')
         detector.load_state_dict(state_dict)
+        # for name, param in state_dict.items():
+        #     print(name)
 
     ## Convert to cuda
     if is_distributed:
@@ -137,7 +144,7 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     print('Num training images: {}'.format(len(dataset_train)))
 
     global_step = 0
-
+    
     for epoch_num in range(cfg.trainer.max_epochs):
         ## Start training for one epoch
         detector.train()

@@ -27,7 +27,8 @@ class AnchorBasedDetection3DHead(nn.Module):
                        layer_cfg:EasyDict=EasyDict(),
                        loss_cfg:EasyDict=EasyDict(),
                        test_cfg:EasyDict=EasyDict(),
-                       read_precompute_anchor:bool=True):
+                       read_precompute_anchor:bool=True,
+                       exp:str='',):
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
         
@@ -39,6 +40,8 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.build_loss(**loss_cfg)
         self.backprojector = BackProjection()
         self.clipper = ClipBoxes()
+        print(f"AnchorBasedDetection3DHead self.exp = {exp}")
+        self.exp = exp
 
         if getattr(layer_cfg, 'num_anchors', None) is None:
             layer_cfg['num_anchors'] = self.anchors.num_anchors
