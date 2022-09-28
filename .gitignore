@@ -108,7 +108,7 @@ ENV/
 
 
 # config
-config/*.py
+# config/*.py
 log
 output
 .vscode
