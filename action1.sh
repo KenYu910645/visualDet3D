@@ -1,9 +1,7 @@
 # Preprocessing
-./launchers/det_precompute.sh config/data_augumentation/add_right_img.py train
-
+./launchers/det_precompute.sh config/data_augumentation/baseline.py train
 # Training 
-./launchers/train.sh config/data_augumentation/add_right_img.py 1 add_right_img > exp_output/data_augumentation/add_right_img/screen_output.txt
-
+./launchers/train.sh config/data_augumentation/baseline.py 1 baseline > exp_output/data_augumentation/baseline/screen_output.txt
 
 # Evaluation on validation set
 # ./launchers/det_precompute.sh config/tmp.py test

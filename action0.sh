@@ -1,8 +1,16 @@
 # Preprocessing
-./launchers/det_precompute.sh config/data_augumentation/baseline.py train
+./launchers/det_precompute.sh config/baseline.py train
+./launchers/train.sh config/baseline.py 1 baseline > exp_output/baseline/screen_output.txt
 
-# Training 
-./launchers/train.sh config/data_augumentation/baseline.py 0 baseline > exp_output/data_augumentation/baseline/screen_output.txt
+# NMS
+./launchers/det_precompute.sh config/nms_test/nms_0.py train
+./launchers/train.sh config/nms_test/nms_0.py 1 baseline > exp_output/nms_test/nms_0/screen_output.txt
+./launchers/det_precompute.sh config/nms_test/nms_0_25.py train
+./launchers/train.sh config/nms_test/nms_0_25.py 1 baseline > exp_output/nms_test/nms_0_25/screen_output.txt
+./launchers/det_precompute.sh config/nms_test/nms_0_5.py train
+./launchers/train.sh config/nms_test/nms_0_5.py 1 baseline > exp_output/nms_test/nms_0_5/screen_output.txt
+./launchers/det_precompute.sh config/nms_test/nms_0_75.py train
+./launchers/train.sh config/nms_test/nms_0_75.py 1 baseline > exp_output/nms_test/nms_0_75/screen_output.txt
 
 # Evaluation on validation set
 # ./launchers/det_precompute.sh config/tmp.py test
