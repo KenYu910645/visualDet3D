@@ -26,6 +26,44 @@ from visualDet3D.data.kitti.kittidata import KittiObj
 import torch
 from .augmentation_builder import Compose, build_single_augmentator
 
+# Added by spiderkiller
+@AUGMENTATION_DICT.register_module
+class RandomZoom(object):
+    """
+    Randomly zoom in
+    """
+    def __init__(self):
+        self.s = 1.2 # Scaling factor
+
+    def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
+        
+        h, w, c = left_image.shape
+
+        # Deal with Left_image
+        left_image = left_image[int(h/2 - h/(2*self.s)) : int(h/2 + h/(2*self.s)),
+                                int(w/2 - w/(2*self.s)) : int(w/2 + w/(2*self.s))]
+        left_image = cv2.resize(left_image, (w, h), interpolation=cv2.INTER_AREA)
+
+        # Deal with right_image
+        if right_image is not None:
+            right_image = right_image[int(h/2 - h/(2*self.s)) : int(h/2 + h/(2*self.s)),
+                                      int(w/2 - w/(2*self.s)) : int(w/2 + w/(2*self.s))]
+            right_image = cv2.resize(right_image, (w, h), interpolation=cv2.INTER_AREA)
+        
+        z_offset = 30 - (30/self.s) # use z=30 as anchor point
+
+        # Deal with labels
+        if labels:
+            if isinstance(labels, list):
+                for obj in labels:
+                    # Deal with 3D bbox
+                    obj.z -= z_offset
+                    pass
+        
+        return left_image, right_image, p2, p3, labels, image_gt, lidar
+
+
+
 @AUGMENTATION_DICT.register_module
 class ConvertToFloat(object):
     """
@@ -688,7 +726,8 @@ class Augmentation(object):
                 CropTop(cfg.crop_top),
                 Resize(self.size),
                 RandomMirror(self.mirror_prob),
-                Normalize(self.mean, self.stds)
+                Normalize(self.mean, self.stds),
+                RandomZoom(),
             ])
         else:
             self.augment = Compose.from_transforms([
@@ -698,7 +737,8 @@ class Augmentation(object):
                 #RandomCrop(self.distort_prob, self.size),
                 Resize(self.size),
                 RandomMirror(self.mirror_prob),
-                Normalize(self.mean, self.stds)
+                Normalize(self.mean, self.stds),
+                RandomZoom(),
             ])
 
     def __call__(self, left_image, right_image, p2=None, p3=None, labels=None, image_gt=None, lidar=None):

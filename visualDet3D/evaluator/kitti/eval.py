@@ -31,11 +31,15 @@ def get_thresholds(scores: np.ndarray, num_gt, num_sample_pts=41):
     return thresholds
 
 
-def clean_data(gt_anno, dt_anno, current_class, difficulty):
-    CLASS_NAMES = [
-        'car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'car',
-        'tractor', 'trailer'
-    ]
+def clean_data(gt_anno, dt_anno, current_class, difficulty, dataset_type):
+    if dataset_type == "nuscene":
+        CLASS_NAMES = ['barrier', 'bicycle', 'bus', 'car', 'construction_vehicle', 'motorcycle', 
+                       'pedestrian', 'traffic_cone', 'trailer', 'truck']
+    else:
+        CLASS_NAMES = [
+            'car', 'pedestrian', 'cyclist', 'van', 'person_sitting', 'car',
+            'tractor', 'trailer'
+        ]
     MIN_HEIGHT = [40, 25, 25]
     MAX_OCCLUSION = [0, 1, 2]
     MAX_TRUNCATION = [0.15, 0.3, 0.5]
@@ -442,14 +446,14 @@ def calculate_iou_partly(gt_annos,
     return overlaps, parted_overlaps, total_gt_num, total_dt_num
 
 
-def _prepare_data(gt_annos, dt_annos, current_class, difficulty):
+def _prepare_data(gt_annos, dt_annos, current_class, difficulty, dataset_type):
     gt_datas_list = []
     dt_datas_list = []
     total_dc_num = []
     ignored_gts, ignored_dets, dontcares = [], [], []
     total_num_valid_gt = 0
     for i in range(len(gt_annos)):
-        rets = clean_data(gt_annos[i], dt_annos[i], current_class, difficulty)
+        rets = clean_data(gt_annos[i], dt_annos[i], current_class, difficulty, dataset_type)
         num_valid_gt, ignored_gt, ignored_det, dc_bboxes = rets
         ignored_gts.append(np.array(ignored_gt, dtype=np.int64))
         ignored_dets.append(np.array(ignored_det, dtype=np.int64))
@@ -482,7 +486,8 @@ def eval_class(gt_annos,
                   compute_aos=False,
                   z_axis=1,
                   z_center=1.0,
-                  num_parts=50):
+                  num_parts=50,
+                  dataset_type='kitti'):
     """Kitti eval. support 2d/bev/3d/aos eval. support 0.5:0.05:0.95 coco AP.
     Args:
         gt_annos: dict, must from get_label_annos() in kitti_common.py
@@ -522,7 +527,7 @@ def eval_class(gt_annos,
     all_thresholds = np.zeros([num_class, num_difficulty, num_minoverlap, N_SAMPLE_PTS])
     for m, current_class in enumerate(current_classes):
         for l, difficulty in enumerate(difficultys):
-            rets = _prepare_data(gt_annos, dt_annos, current_class, difficulty)
+            rets = _prepare_data(gt_annos, dt_annos, current_class, difficulty, dataset_type)
             (gt_datas_list, dt_datas_list, ignored_gts, ignored_dets,
              dontcares, total_dc_num, total_num_valid_gt) = rets
             for k, min_overlap in enumerate(min_overlaps[:, metric, m]):
@@ -654,7 +659,8 @@ def do_eval_v3(gt_annos,
                compute_aos=False,
                difficultys=(0, 1, 2),
                z_axis=1,
-               z_center=1.0):
+               z_center=1.0,
+               dataset_type='kitti'):
     # min_overlaps: [num_minoverlap, metric, num_class]
     types = ["bbox", "bev", "3d"]
     metrics = {}
@@ -668,7 +674,8 @@ def do_eval_v3(gt_annos,
             min_overlaps,
             compute_aos,
             z_axis=z_axis,
-            z_center=z_center)
+            z_center=z_center,
+            dataset_type=dataset_type)
         metrics[types[i]] = ret
     return metrics
 
@@ -713,6 +720,7 @@ def print_str(value, *arg, sstream=None):
 def get_official_eval_result(gt_annos,
                              dt_annos,
                              current_classes,
+                             dataset_type='kitti',
                              difficultys=[0, 1, 2],
                              z_axis=1,
                              z_center=1.0):
@@ -720,23 +728,46 @@ def get_official_eval_result(gt_annos,
         gt_annos and dt_annos must contains following keys:
         [bbox, location, dimensions, rotation_y, score]
     """
-    overlap_mod = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7, 0.7],
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7, 0.7],
-                            [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7, 0.7]])
-    overlap_easy = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5, 0.5, 0.5],
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5, 0.5],
-                            [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5, 0.5]])
+    if dataset_type == "nuscene":
+        overlap_mod = np.array([[0.5, 0.5, 0.7, 0.7, 0.7, 0.5, 0.5, 0.5, 0.7, 0.7],
+                                [0.5, 0.5, 0.7, 0.7, 0.7, 0.5, 0.5, 0.5, 0.7, 0.7],
+                                [0.5, 0.5, 0.7, 0.7, 0.7, 0.5, 0.5, 0.5, 0.7, 0.7]])
+        overlap_easy = np.array([[0.5, 0.5, 0.7, 0.7, 0.5, 0.5, 0.5, 0.5, 0.7, 0.7],
+                                 [0.25, 0.25, 0.5, 0.5, 0.5, 0.25, 0.25, 0.25, 0.5, 0.5],
+                                 [0.25, 0.25, 0.5, 0.5, 0.5, 0.25, 0.25, 0.25, 0.5, 0.5]])
+    else:
+        overlap_mod = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7, 0.7],
+                                [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7, 0.7],
+                                [0.7, 0.5, 0.5, 0.7, 0.5, 0.7, 0.7, 0.7]])
+        overlap_easy = np.array([[0.7, 0.5, 0.5, 0.7, 0.5, 0.5, 0.5, 0.5],
+                                [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5, 0.5],
+                                [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5, 0.5]])
     min_overlaps = np.stack([overlap_mod, overlap_easy], axis=0)  # [2, 3, 5]
-    class_to_name = {
-        0: 'Car',
-        1: 'Pedestrian',
-        2: 'Cyclist',
-        3: 'Van',
-        4: 'Person_sitting',
-        5: 'car',
-        6: 'tractor',
-        7: 'trailer',
-    }
+    print(f"dataset_type in innest fuctino : {dataset_type}")
+    if dataset_type == "nuscene":
+        class_to_name = {
+            0: 'barrier',
+            1: 'bicycle',
+            2: 'bus',
+            3: 'car',
+            4: 'construction_vehicle',
+            5: 'motorcycle',
+            6: 'pedestrian',
+            7: 'traffic_cone',
+            8: 'trailer',
+            9: 'truck',
+        }
+    else:
+        class_to_name = {
+            0: 'Car',
+            1: 'Pedestrian',
+            2: 'Cyclist',
+            3: 'Van',
+            4: 'Person_sitting',
+            5: 'car',
+            6: 'tractor',
+            7: 'trailer',
+        }
     name_to_class = {v: n for n, v in class_to_name.items()}
     if not isinstance(current_classes, (list, tuple)):
         current_classes = [current_classes]
@@ -764,7 +795,8 @@ def get_official_eval_result(gt_annos,
         compute_aos,
         difficultys,
         z_axis=z_axis,
-        z_center=z_center)
+        z_center=z_center,
+        dataset_type=dataset_type)
     for j, curcls in enumerate(current_classes):
         # mAP threshold array: [num_minoverlap, metric, class]
         # mAP result: [num_class, num_diff, num_minoverlap]

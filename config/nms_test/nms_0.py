@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/visualDet3D/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/visualDet3D/kitti/testing' # "/data/kitti_obj/testing" # used in visualDet3D/data/.../dataset
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/data_augumentation/viz_da' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/nms_test/nms_0' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 if not os.path.isdir(path.project_path):
     os.mkdir(path.project_path)
 path.project_path = os.path.join(path.project_path, 'Mono3D')
@@ -76,14 +76,14 @@ cfg.scheduler = scheduler
 
 ## data
 data = edict(
-    batch_size = 1,
-    num_workers = 1,
+    batch_size = 8,
+    num_workers = 8,
     rgb_shape = (288, 1280, 3),
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'viz_da', 'train.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'viz_da', 'val.txt'),
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'train.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'val.txt'),
     use_right_image = False,
 )
 
@@ -95,12 +95,11 @@ data.augmentation = edict(
 )
 data.train_augmentation = [
     edict(type_name='ConvertToFloat'),
-    # edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
+    edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
     edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
-    # edict(type_name='RandomZoom'),
     edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
-    # edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
-    # edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
+    edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
+    edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
 ]
 data.test_augmentation = [
     edict(type_name='ConvertToFloat'),
@@ -137,7 +136,7 @@ head_loss = edict(
 head_test = edict(
     score_thr=0.75,
     cls_agnostic = False,
-    nms_iou_thr=0.5,
+    nms_iou_thr=0.0,
     post_optimization=True,
 )
 

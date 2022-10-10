@@ -328,6 +328,7 @@ def get_label_anno(label_path):
         annotations['score'] = np.zeros([len(annotations['bbox'])])
     return annotations
 
+# Spiderkiller change image_ids to str in order to make it compatible with nuscene_kitti
 def get_label_annos(label_folder, image_ids=None):
     if image_ids is None:
         filepaths = pathlib.Path(label_folder).glob('*.txt')
@@ -340,8 +341,9 @@ def get_label_annos(label_folder, image_ids=None):
     annos = []
     label_folder = pathlib.Path(label_folder)
     for idx in image_ids:
-        image_idx = get_image_index_str(idx)
-        label_filename = label_folder / (image_idx + '.txt')
+        # image_idx = get_image_index_str(idx)
+        # label_filename = label_folder / (image_idx + '.txt')
+        label_filename = label_folder / (idx.strip() + '.txt')
         annos.append(get_label_anno(label_filename))
     return annos
 

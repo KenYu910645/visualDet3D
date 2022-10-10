@@ -73,32 +73,39 @@ def evaluate_kitti_obj(cfg:EasyDict,
                        ):
     model.eval()
     result_path = os.path.join(cfg.path.preprocessed_path, result_path_split, 'data')
+    
+    # TODO TODO TODO disable rebuild experiment
     if os.path.isdir(result_path):
         os.system("rm -r {}".format(result_path))
         print("clean up the recorder directory of {}".format(result_path))
     os.mkdir(result_path)
     print("rebuild {}".format(result_path))
+
     test_func = PIPELINE_DICT[cfg.trainer.test_func]
     projector = BBox3dProjector().cuda()
     backprojector = BackProjection().cuda()
     
     # Added by spiderkiller, able to output file_name.txt 
     with open(cfg.data.val_split_file, 'r') as f:
-        fn_list = [int(i) for i in f.read().splitlines()]
+        fn_list = [i for i in f.read().splitlines()]
     print(f"fn_list loaded {len(fn_list)} lines.")
     assert len(fn_list) == len(dataset_val), 'Number of validation data are not matched, go to /home/lab530/KenYu/visualDet3D/visualDet3D/networks/pipelines/evaluators.py'
 
+    # # TODO TODO TODO tmp
     for index in tqdm(range(len(dataset_val))):
         test_one(cfg, index, fn_list, dataset_val, model, test_func, backprojector, projector, result_path)
     if "is_running_test_set" in cfg and cfg["is_running_test_set"]:
         print("Finish evaluation.")
         return
+    
+    print(f"cfg.dataset_type = {getattr(cfg, 'dataset_type', 'kitti')}")
     result_texts = evaluate(
         label_path=os.path.join(cfg.path.data_path, 'label_2'),
         result_path=result_path,
         label_split_file=cfg.data.val_split_file,
         current_classes=[i for i in range(len(cfg.obj_types))],
-        gpu=min(cfg.trainer.gpu, torch.cuda.device_count() - 1)
+        gpu=min(cfg.trainer.gpu, torch.cuda.device_count() - 1),
+        dataset_type=getattr(cfg, "dataset_type", "kitti"),
     )
     for class_index, result_text in enumerate(result_texts):
         if writer is not None:
