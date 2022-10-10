@@ -177,8 +177,6 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
     print("{} split finished precomputing".format(data_split))
 
 
-
-
 def main(config:str="config/config.py"):
     cfg = cfg_from_file(config)
     torch.cuda.set_device(cfg.trainer.gpu)

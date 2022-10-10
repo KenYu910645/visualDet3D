@@ -159,13 +159,15 @@ def generate_depth_from_velo(pc_velo:np.ndarray,
 
     return depth_map
 
+# spiderkiller changed index to name because index serve no purpose
 def write_result_to_file(base_result_path:str, 
-                        index:int, scores, bbox_2d, bbox_3d_state_3d=None, thetas=None, obj_types=['Car', 'Pedestrian', 'Cyclist'], threshold=0.4):
+                        name:str, scores, bbox_2d, bbox_3d_state_3d=None, thetas=None, obj_types=['Car', 'Pedestrian', 'Cyclist'], threshold=0.4):
     """Write Kitti prediction results of one frame to a file 
 
     Args:
         base_result_path (str): path to the result dictionary 
-        index (int): index of the target frame
+        # index (int): index of the target frame
+        name (str): name of the image 
         scores (List[float]): A list or numpy array or cpu tensor of float for score
         bbox_2d (np.ndarray): numpy array of [N, 4]
         bbox_3d_state_3d (np.ndarray, optional): 3D stats [N, 7] [x_center, y_center, z_center, w, h, l, alpha]. Defaults to None.
@@ -173,7 +175,7 @@ def write_result_to_file(base_result_path:str,
         obj_types (List[str], optional): List of string if object type names. Defaults to ['Car', 'Pedestrian', 'Cyclist'].
         threshold (float, optional): Threshold for selection samples. Defaults to 0.4.
     """    
-    name = "%06d" % index
+    # name = "%06d" % index
     text_to_write = ""
     file = open(os.path.join(base_result_path, name + '.txt'), 'w')
     if bbox_3d_state_3d is None:
