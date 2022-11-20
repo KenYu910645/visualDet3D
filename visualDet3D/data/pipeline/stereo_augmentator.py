@@ -111,7 +111,7 @@ class Resize(object):
         self.preserve_aspect_ratio = preserve_aspect_ratio
 
     def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
-
+        # print(f"self.preserve_aspect_ratio = {self.preserve_aspect_ratio}") # True
         if self.preserve_aspect_ratio:
             scale_factor = self.size[0] / left_image.shape[0]
 

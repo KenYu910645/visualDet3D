@@ -94,7 +94,7 @@ def draw_3D_box(img, corners, color = (255, 255, 0)):
     cv2.line(img, points[0], points[1], color)
     return img
 
-def compound_annotation(labels, max_length, bbox2d, bbox_3d, obj_types):
+def compound_annotation(labels, max_length, bbox2d, bbox_3d, loc_3d_ry, obj_types):
     """ Compound numpy-like annotation formats. Borrow from Retina-Net
     
     Args:
@@ -102,18 +102,19 @@ def compound_annotation(labels, max_length, bbox2d, bbox_3d, obj_types):
         max_length: int, max_num_objects, can be dynamic for each iterations
         bbox_2d: List[np.ndArray], [left, top, right, bottom].
         bbox_3d: List[np.ndArray], [cam_x, cam_y, z, w, h, l, alpha].
+        loc_3d_ry: [x3d, y3d, z3d, rot_y]
         obj_types: List[str]
     Return:
         np.ndArray, [batch_size, max_length, 12]
             [x1, y1, x2, y2, cls_index, cx, cy, z, w, h, l, alpha]
             cls_index = -1 if empty
     """
-    annotations = np.ones([len(labels), max_length, bbox_3d[0].shape[-1] + 5]) * -1
+    annotations = np.ones([len(labels), max_length, bbox_3d[0].shape[-1] + 9]) * -1
     for i in range(len(labels)):
         label = labels[i]
         for j in range(len(label)):
             annotations[i, j] = np.concatenate([
-                bbox2d[i][j], [obj_types.index(label[j])], bbox_3d[i][j]
+                bbox2d[i][j], [obj_types.index(label[j])], bbox_3d[i][j], loc_3d_ry[i][j]
             ])
     return annotations
 

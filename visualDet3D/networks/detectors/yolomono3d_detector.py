@@ -1,72 +1,10 @@
 import numpy as np
 import torch.nn as nn
 import torch
-import math
-import time
 from visualDet3D.networks.utils import DETECTOR_DICT
 from visualDet3D.networks.detectors.yolomono3d_core import YoloMono3DCore
-from visualDet3D.networks.heads.detection_3d_head import AnchorBasedDetection3DHead
-from visualDet3D.networks.lib.blocks import AnchorFlatten
-from visualDet3D.networks.lib.look_ground import LookGround
-import pickle
-
-class GroundAwareHead(AnchorBasedDetection3DHead):
-    def init_layers(self, num_features_in,
-                          num_anchors:int,
-                          num_cls_output:int,
-                          num_reg_output:int,
-                          cls_feature_size:int=1024,
-                          reg_feature_size:int=1024,
-                          **kwargs):
-        self.cls_feature_extraction = nn.Sequential(
-            nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
-            nn.Dropout2d(0.3),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(cls_feature_size, cls_feature_size, kernel_size=3, padding=1),
-            nn.Dropout2d(0.3),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(cls_feature_size, num_anchors*(num_cls_output), kernel_size=3, padding=1),
-            AnchorFlatten(num_cls_output)
-        )
-        self.cls_feature_extraction[-2].weight.data.fill_(0)
-        self.cls_feature_extraction[-2].bias.data.fill_(0)
-
-        print(f"GroundAwareHead  self.exp = {self.exp}")
-        if self.exp == "NA_NLG": # Without LookGround
-            self.reg_feature_extraction = nn.Sequential(
-                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
-                nn.ReLU(),
-                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-                AnchorFlatten(num_reg_output)
-            )
-        else:
-            self.reg_feature_extraction = nn.Sequential(
-                LookGround(num_features_in, self.exp),
-                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
-                nn.ReLU(),
-                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-                AnchorFlatten(num_reg_output)
-            )
-        
-        self.reg_feature_extraction[-2].weight.data.fill_(0)
-        self.reg_feature_extraction[-2].bias.data.fill_(0)
-
-    def forward(self, inputs):
-        cls_preds = self.cls_feature_extraction(inputs['features'])
-        if self.exp == "NA_NLG":
-            reg_preds = self.reg_feature_extraction(inputs['features'])
-        else:
-            reg_preds = self.reg_feature_extraction(inputs)
-        return cls_preds, reg_preds
+from visualDet3D.networks.heads.detection_3d_head import GroundAwareHead
+from visualDet3D.networks.heads.bev_ank_head import BevAnk3DHead
 
 @DETECTOR_DICT.register_module
 class Yolo3D(nn.Module):
@@ -116,10 +54,8 @@ class Yolo3D(nn.Module):
             features = torch.cat([features, grid], dim=1)
             # print(f"features.shape = {features.shape}")
 
-        cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch))
-        # print(f"cls_preds.shape = {cls_preds.shape}") # [8, 46080, 2]
-        # print(f"reg_preds.shape = {reg_preds.shape}") # [8, 46080, 12] 
-        anchors = self.bbox_head.get_anchor(img_batch, P2) # ([8, 1024, 18, 80])
+        cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch)) # [8, 46080, 2], [8, 46080, 12] 
+        anchors = self.bbox_head.get_anchor(img_batch, P2)
         # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
         # print(f"anchors['mask'] = {anchors['mask'].shape}") # [8, 46080]
         # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2], z, sin(\t), cos(\t)
@@ -160,6 +96,7 @@ class Yolo3D(nn.Module):
         assert img_batch.shape[0] == 1 # we recommmend image batch size = 1 for testing
         
         # This is for visulization 
+        # import pickle
         # with open('img_batch.pkl', 'wb') as f:
         #     pickle.dump(img_batch, f)
         #     print(f"Write img_batch to img_batch.pkl")
@@ -174,9 +111,15 @@ class Yolo3D(nn.Module):
 
         cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2))
 
-        anchors = self.bbox_head.get_anchor(img_batch, P2)
+        anchors = self.bbox_head.get_anchor(img_batch, P2) # This is same for every picture
+        # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
+        # print(f"anchors['mask'] = {anchors['mask'].shape}") # [1, 46080]
+        # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2]
 
         scores, bboxes, cls_indexes = self.bbox_head.get_bboxes(cls_preds, reg_preds, anchors, P2, img_batch)
+        # print(f"scores = {scores.shape}") # torch.Size([5]) # [number of detection], confident score
+        # print(f"bboxes = {bboxes.shape}") # torch.Size([5, 11]),
+        # print(f"cls_indexes = {cls_indexes.shape}") # torch.Size([5]), class_idx
 
         return scores, bboxes, cls_indexes
 
@@ -198,3 +141,12 @@ class GroundAwareYolo3D(Yolo3D):
             **(network_cfg.head)
         )
 
+# Add to register BevAnkYolo3D
+@DETECTOR_DICT.register_module
+class BevAnkYolo3D(Yolo3D):
+    """Some Information about BevAnkYolo3D"""
+
+    def build_head(self, network_cfg):
+        self.bbox_head = BevAnk3DHead(
+            **(network_cfg.head)
+        )

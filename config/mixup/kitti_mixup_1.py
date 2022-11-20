@@ -23,10 +23,10 @@ cfg.trainer = trainer
 ## path
 path = edict()
 path.data_path = '/home/lab530/KenYu/kitti_mixup_1/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
-path.test_path = '/home/lab530/KenYu/kitti_mixup_1/testing' # "/data/kitti_obj/testing" # used in visualDet3D/data/.../dataset
+path.test_path = '/home/lab530/KenYu/kitti_mixup_1/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
 path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
-path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
+# path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
 
 if not os.path.isdir(path.project_path):
     os.mkdir(path.project_path)

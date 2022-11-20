@@ -33,9 +33,9 @@ class Anchors(nn.Module):
             save_dir = os.path.join(preprocessed_path, 'training')
             for i in range(len(obj_types)):
                 npy_file = os.path.join(save_dir,'anchor_mean_{}.npy'.format(obj_types[i]))
+                print(f"npy_file = {np.load(npy_file).shape}") # (16, 2, 6)
                 self.anchors_mean_original[i]  = np.load(npy_file) #[30, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
                 
-
                 std_file = os.path.join(save_dir,'anchor_std_{}.npy'.format(obj_types[i]))
                 self.anchors_std_original[i] = np.load(std_file) #[30, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
 
@@ -72,6 +72,13 @@ class Anchors(nn.Module):
                 anchors         = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales)
                 shifted_anchors = shift(image_shapes[idx], self.strides[idx], anchors)
                 all_anchors     = np.append(all_anchors, shifted_anchors, axis=0)
+            
+            # # TODO Output anchor for debugging
+            # print(f"anchors = {all_anchors.shape}") # (32, 4)
+            # import pickle
+            # with open("all_anchors.pkl", 'wb') as f:
+            #     pickle.dump(all_anchors, f)
+            #     print("Write all_anchors to all_anchors.pkl")
 
             if self.readConfigFile:
                 sizes_int, ratio_int = self.anchors2indexes(all_anchors)
@@ -103,7 +110,8 @@ class Anchors(nn.Module):
             cx = P2[:, 0:1, 2:3] #[B,1, 1]
             N = self.anchors.shape[1]
             if self.readConfigFile and is_filtering:
-                anchors_z = self.anchor_means[:, :, 0] #[types, N]
+                anchors_z = self.anchor_means[:, :, 0] #[types, N] # torch.Size([1, 46080])
+                # Accoording to paper's formular (1)
                 world_x3d = (self.anchors_image_x_center * anchors_z - anchors_z.new(cx) * anchors_z) / anchors_z.new(fy) #[B, types, N]
                 world_y3d = (self.anchors_image_y_center * anchors_z - anchors_z.new(cy) * anchors_z) / anchors_z.new(fy) #[B, types, N]
                 self.useful_mask = torch.any( (world_y3d > self.filter_y_threshold_min_max[0]) * 
@@ -111,6 +119,14 @@ class Anchors(nn.Module):
                                               (world_x3d.abs() < self.filter_x_threshold), dim=1)  #[B,N] any one type lies in target range
             else:
                 self.useful_mask = torch.ones([len(P2), N], dtype=torch.bool, device="cuda")
+            
+            # # TODO Output useful_mask for debugging
+            # print(f"self.useful_mask = {self.useful_mask.shape}") # (32, 4)
+            # import pickle
+            # with open("useful_mask.pkl", 'wb') as f:
+            #     pickle.dump(self.useful_mask, f)
+            #     print("Write useful_mask to useful_mask.pkl")
+            
             if self.readConfigFile:
                 return self.anchors, self.useful_mask, self.anchor_mean_std
             else:
@@ -119,6 +135,9 @@ class Anchors(nn.Module):
 
     @property
     def num_anchors(self):
+        # print(f"self.pyramid_levels = {self.pyramid_levels}") [4]
+        # print(f"self.ratios = {self.ratios}") # [0.5 1. ]
+        # print(f"self.scales = {self.scales}") # [2**0, 2**1/2, 2**1, .... 2**4]
         return len(self.pyramid_levels) * len(self.ratios) * len(self.scales)
 
     @property
@@ -147,7 +166,6 @@ class Anchors(nn.Module):
             x2 - center_x,
             y2 - center_y
         ], dim=-1)
-        
 
 def generate_anchors(base_size=16, ratios=None, scales=None):
     """
@@ -161,7 +179,7 @@ def generate_anchors(base_size=16, ratios=None, scales=None):
     if scales is None:
         scales = np.array([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)])
 
-    num_anchors = len(ratios) * len(scales)
+    num_anchors = len(ratios) * len(scales) # num_anchors = 32
 
     # initialize output anchors
     anchors = np.zeros((num_anchors, 4))
@@ -179,11 +197,14 @@ def generate_anchors(base_size=16, ratios=None, scales=None):
     # transform from (x_ctr, y_ctr, w, h) -> (x1, y1, x2, y2)
     anchors[:, 0::2] -= np.tile(anchors[:, 2] * 0.5, (2, 1)).T
     anchors[:, 1::2] -= np.tile(anchors[:, 3] * 0.5, (2, 1)).T
+    
+    # Output anchor for debugging
     # print(f"anchors = {anchors.shape}") # (32, 4)
     # import pickle
     # with open("anchors.pkl", 'wb') as f:
     #     pickle.dump(anchors, f)
     #     print("Write anchors to anchors.pkl")
+    
     return anchors
 
 def compute_shape(image_shape, pyramid_levels):
@@ -196,7 +217,6 @@ def compute_shape(image_shape, pyramid_levels):
     image_shape = np.array(image_shape[:2])
     image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in pyramid_levels]
     return image_shapes
-
 
 def anchors_for_shape(
     image_shape,
@@ -213,12 +233,11 @@ def anchors_for_shape(
     # compute anchors over all pyramid levels
     all_anchors = np.zeros((0, 4))
     for idx, p in enumerate(pyramid_levels):
-        anchors         = generate_anchors(base_size=sizes[idx], ratios=ratios, scales=scales)
+        anchors         = generate_anchors(base_size=sizes[idx], ratios=ratios, scales=scales) # [32, 4]
         shifted_anchors = shift(image_shapes[idx], strides[idx], anchors)
         all_anchors     = np.append(all_anchors, shifted_anchors, axis=0)
 
     return all_anchors
-
 
 def shift(shape, stride, anchors):
     shift_x = (np.arange(0, shape[1]) + 0.5) * stride
@@ -241,4 +260,3 @@ def shift(shape, stride, anchors):
     all_anchors = all_anchors.reshape((K * A, 4))
 
     return all_anchors
-

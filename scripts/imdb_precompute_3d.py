@@ -7,11 +7,14 @@ from copy import deepcopy
 import skimage.measure
 import torch
 
+import matplotlib
+matplotlib.use('agg') 
+
 from _path_init import *
 from visualDet3D.networks.heads.anchors import Anchors
 from visualDet3D.networks.utils.utils import calc_iou, BBox3dProjector
 from visualDet3D.data.pipeline import build_augmentator
-from visualDet3D.data.kitti.kittidata import KittiData
+from visualDet3D.data.kitti.kittidata import KittiData, KittiLabel
 from visualDet3D.utils.timer import Timer
 from visualDet3D.utils.utils import cfg_from_file
 
@@ -72,10 +75,15 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
         # read data with dataloader api
         data_frame = KittiData(data_root_dir, index_name, output_dict)
         calib, image, label, velo = data_frame.read_data()
-
-        # store the list of kittiObjet and kittiCalib
+        
+        # Load label , store the list of kittiObjet and kittiCalib, 
+        # TODO TODO TODO: I don't really think this is a good ideas
+        # original 
         max_occlusion = getattr(cfg.data, 'max_occlusion', 2)
         min_z        = getattr(cfg.data, 'min_z', 3)
+        print(f"max_occlusion = {max_occlusion}")
+        print(f"min_z = {min_z}")
+
         if data_split == 'training':
             data_frame.label = [obj for obj in label.data if obj.type in cfg.obj_types and obj.occluded < max_occlusion and obj.z > min_z]
             
@@ -93,13 +101,13 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
                         uniform_square_each_type[j, :] += np.sum(data ** 2, axis=0)
         else:
             data_frame.label = [obj for obj in label.data if obj.type in cfg.obj_types]
+        # Load calibration file
         data_frame.calib = calib
-        
-
-
         if data_split == 'training' and anchor_prior:
             original_image = image.copy()
             baseline = (calib.P2[0, 3] - calib.P3[0, 3]) / calib.P2[0, 0]
+            
+            # Augument the images
             image, P2, label = preprocess(original_image, p2=deepcopy(calib.P2), labels=deepcopy(data_frame.label))
             _,  P3 = preprocess(original_image, p2=deepcopy(calib.P3))
 
@@ -134,6 +142,7 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
                         sums[j, sizes_int[k], ratio_int[k]] += positive_ground_truth_3d[k, 2:5]
                         squared[j, sizes_int[k], ratio_int[k]] += positive_ground_truth_3d[k, 2:5] ** 2
 
+        # Save label.txt and calib.txt in frames[ KittiData(), KittiData(), KittiData(), ...]
         frames[i] = data_frame
 
         if (i+1) % time_display_inter == 0:
