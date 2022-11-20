@@ -1,10 +1,13 @@
-# EXP_NAME=('score_0_5' 'score_0_9')
-# EXP_NAME=('score_0_nms_0')
+./launchers/det_precompute.sh config/iou/baseline.py train
+./launchers/train.sh config/iou/baseline.py 1 baseline
+
+
+# EXP_NAME=('baseline' 'iou' 'ciou')
 
 # for exp_name in "${EXP_NAME[@]}"
 # do
-#     ./launchers/det_precompute.sh config/score_test/"$exp_name".py train
-#     ./launchers/train.sh config/score_test/"$exp_name".py 1 "$exp_name" > exp_output/score_test/"$exp_name"/screen_output.txt
+#     ./launchers/det_precompute.sh config/iou/"$exp_name".py train
+#     ./launchers/train.sh config/iou/"$exp_name".py 1 "$exp_name" > exp_output/iou/"$exp_name"/screen_output.txt
 # done
 
 # NMS
@@ -32,8 +35,8 @@
 #########################
 
 # Train for anchor gen experiment
-./launchers/det_precompute.sh config/gac_original.py train
-./launchers/train.sh config/gac_original.py 1 gac_original
+# ./launchers/det_precompute.sh config/gac_original.py train
+# ./launchers/train.sh config/gac_original.py 1 gac_original
 
 # Evaluation on validation set
 # ./launchers/det_precompute.sh config/anchor_gen.py train # test

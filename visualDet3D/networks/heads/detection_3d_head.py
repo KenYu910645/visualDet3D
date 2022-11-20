@@ -38,6 +38,8 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.clipper = ClipBoxes()
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
         self.exp = exp
+        self.iou_type = loss_cfg.iou_type
+        print(f"iou_type = {self.iou_type}")
 
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -647,6 +649,7 @@ class AnchorBasedDetection3DHead(nn.Module):
                         reg_loss.append(loss_j.mean(dim=0)) #[13]
                         number_of_positives.append(bbox_annotation.shape[0])
                     else:
+                        # Get regression loss
                         reg_loss_j = self.loss_bbox(pos_bbox_targets, reg_pred[pos_inds]) # This is the first time, loss() used prediction result
                         alpha_loss_j = self.alpha_loss(pos_alpha_score, targets_alpha_cls)
                         loss_j = torch.cat([reg_loss_j, alpha_loss_j], dim=1) * self.regression_weight #[N, 13]
@@ -659,6 +662,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             if len(neg_inds) > 0:
                 labels[neg_inds, :] = 0
             
+            # Get classification loss
             cls_loss.append(self.loss_cls(cls_score, labels).sum() / (len(pos_inds) + len(neg_inds)))
         
         weights = reg_pred.new(number_of_positives).unsqueeze(1) #[B, 1]
