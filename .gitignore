@@ -120,3 +120,8 @@ resnet152*
 
 # *.ipynb
 workdirs
+
+# actions
+action0.sh
+action1.sh
+

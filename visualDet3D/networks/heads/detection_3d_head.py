@@ -291,12 +291,12 @@ class AnchorBasedDetection3DHead(nn.Module):
                 [x1, y1, x2, y2, cx, cy, cz, w, h, l, alpha]
             mask - [N_D] - [184]
         '''
-        print(f"boxes = {boxes.shape}")
-        print(f"deltas = {deltas.shape}")
-        print(f"anchors_3d_mean_std = {anchors_3d_mean_std.shape}")
-        print(f"label_index = {label_index.shape}")
-        print(f"alpha_score = {alpha_score.shape}")
-        print(label_index)
+        # print(f"boxes = {boxes.shape}")
+        # print(f"deltas = {deltas.shape}")
+        # print(f"anchors_3d_mean_std = {anchors_3d_mean_std.shape}")
+        # print(f"label_index = {label_index.shape}")
+        # print(f"alpha_score = {alpha_score.shape}")
+        # print(label_index)
 
         std = torch.tensor([0.1, 0.1, 0.2, 0.2, 0.1, 0.1, 1, 1, 1, 1, 1, 1], dtype=torch.float32, device=boxes.device)
         
@@ -567,6 +567,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             unique, counts = np.unique(assignement_result_dict['assigned_gt_inds'].cpu().numpy(), return_counts=True)
             anchor_assign = dict(zip(unique, counts)) # {-1: 100, 0: 3720, 1: 40}
 
+            '''
             for gt_idx in range(bbox_annotation.shape[0]):
                 if gt_idx+1 in anchor_assign:
                     self.n_cover_gt += 1
@@ -576,7 +577,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             print(f"Number of missed groundtrue = {self.n_miss_gt}")
             print(f"Number of covered groundtrue = {self.n_cover_gt}")
             print(f"Avg number of anchor for every gt = {self.n_assign_anchor / self.n_cover_gt}")
-            
+            '''
 
             # print(f"assignement_result_dict['max_overlaps'] = {assignement_result_dict['max_overlaps'].shape}") # [7548]
             # print(f"assignement_result_dict['labels'] = {assignement_result_dict['labels'].shape}") # [7548]
@@ -585,7 +586,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             # I thikn this sample function does nothing
             sampling_result_dict    = self._sample(assignement_result_dict, anchor_j, bbox_annotation) # doesn't involve prediction
 
-            print(f"n_pos, n_neg = {(len(sampling_result_dict['pos_inds']), len(sampling_result_dict['neg_inds']))}")
+            # print(f"n_pos, n_neg = {(len(sampling_result_dict['pos_inds']), len(sampling_result_dict['neg_inds']))}")
             # print(f"sampling_result_dict['pos_inds'] = {sampling_result_dict['pos_inds']}")
             # print(f"sampling_result_dict['pos_bboxes'] = {sampling_result_dict['pos_bboxes'].shape}") # [40, 4], pos_bboxes are anchor that is assign to groundtrue 
             # print(f"sampling_result_dict['neg_bboxes'] = {sampling_result_dict['neg_bboxes'].shape}") # [3720, 4]

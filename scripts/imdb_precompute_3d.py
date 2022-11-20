@@ -79,7 +79,7 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
         # Load label , store the list of kittiObjet and kittiCalib, 
 
         if data_split == 'training':
-            data_frame.label = [obj for obj in label.data if obj.type in cfg.obj_types and obj.occluded < max_occlusion and obj.z > min_z]
+            data_frame.label = [obj for obj in label.data if obj.type in cfg.obj_types and obj.occluded < cfg.data.max_occlusion and obj.z > cfg.data.min_z]
             
             if anchor_prior:
                 for j in range(len(cfg.obj_types)):
@@ -186,10 +186,10 @@ def main(config:str="config/config.py"):
 
     # TODO TODO TODO: I don't really think this is a good ideas
     # original 
-    max_occlusion = getattr(cfg.data, 'max_occlusion', 2)
-    min_z        = getattr(cfg.data, 'min_z', 3)
-    print(f"max_occlusion = {max_occlusion}")
-    print(f"min_z = {min_z}")
+    cfg.data.max_occlusion = getattr(cfg.data, 'max_occlusion', 2)
+    cfg.data.min_z         = getattr(cfg.data, 'min_z', 3)
+    print(f"max_occlusion = {cfg.data.max_occlusion}")
+    print(f"min_z = {cfg.data.min_z}")
     
     time_display_inter = 100 # define the inverval displaying time consumed in loop
     data_root_dir = cfg.path.data_path # the base directory of training dataset

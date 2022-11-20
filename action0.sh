@@ -32,8 +32,8 @@
 #########################
 
 # Train for anchor gen experiment
-./launchers/det_precompute.sh config/anchor_gen.py train
-./launchers/train.sh config/anchor_gen.py 0 anchor_gen
+./launchers/det_precompute.sh config/gac_original.py train
+./launchers/train.sh config/gac_original.py 1 gac_original
 
 # Evaluation on validation set
 # ./launchers/det_precompute.sh config/anchor_gen.py train # test
