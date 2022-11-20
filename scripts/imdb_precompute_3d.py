@@ -77,12 +77,6 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
         calib, image, label, velo = data_frame.read_data()
         
         # Load label , store the list of kittiObjet and kittiCalib, 
-        # TODO TODO TODO: I don't really think this is a good ideas
-        # original 
-        max_occlusion = getattr(cfg.data, 'max_occlusion', 2)
-        min_z        = getattr(cfg.data, 'min_z', 3)
-        print(f"max_occlusion = {max_occlusion}")
-        print(f"min_z = {min_z}")
 
         if data_split == 'training':
             data_frame.label = [obj for obj in label.data if obj.type in cfg.obj_types and obj.occluded < max_occlusion and obj.z > min_z]
@@ -189,6 +183,13 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
 def main(config:str="config/config.py"):
     cfg = cfg_from_file(config)
     torch.cuda.set_device(cfg.trainer.gpu)
+
+    # TODO TODO TODO: I don't really think this is a good ideas
+    # original 
+    max_occlusion = getattr(cfg.data, 'max_occlusion', 2)
+    min_z        = getattr(cfg.data, 'min_z', 3)
+    print(f"max_occlusion = {max_occlusion}")
+    print(f"min_z = {min_z}")
     
     time_display_inter = 100 # define the inverval displaying time consumed in loop
     data_root_dir = cfg.path.data_path # the base directory of training dataset
