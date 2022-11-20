@@ -1,6 +1,9 @@
 """
     Script for launching training process
 """
+import matplotlib
+matplotlib.use('agg') 
+
 import os
 import sys
 import numpy as np
@@ -74,7 +77,10 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     ## define datasets and dataloader.
     dataset_train = DATASET_DICT[cfg.data.train_dataset](cfg)
     dataset_val = DATASET_DICT[cfg.data.val_dataset](cfg, "validation")
-
+    # for i in dataset_train:
+    #     print(i.keys()) # ['calib', 'image', 'label', 'bbox2d', 'bbox3d', 'original_shape', 'original_P', 'loc_3d_roy']
+    print('Num training images: {}'.format(len(dataset_train)))
+    print('Num validation images: {}'.format(len(dataset_val)))
     dataloader_train = build_dataloader(dataset_train,
                                         num_workers=cfg.data.num_workers,
                                         batch_size=cfg.data.batch_size,
@@ -144,7 +150,6 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     ## timer is used to estimate eta
     timer = Timer()
 
-    print('Num training images: {}'.format(len(dataset_train)))
 
     global_step = 0
     

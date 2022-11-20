@@ -63,7 +63,11 @@ def main(config="config/config.py"):
     }
 
     num_test_file = N
-    test_names = ["%06d" % i for i in range(num_test_file)]
+    
+    # Spiderkiller added 
+    # test_names = ["%06d" % i for i in range(num_test_file)] # this is bad, should directly read test calib file name
+    test_names = [i.split('.')[0] for i in list_calib]
+    
     read_one_split(cfg, test_names, data_root_dir, output_dict,
                    'test', time_display_inter)
 

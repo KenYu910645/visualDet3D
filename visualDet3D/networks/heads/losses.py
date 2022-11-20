@@ -67,7 +67,6 @@ class SoftmaxFocalLoss(nn.Module):
         cls_loss = cls_loss * balance_weights
         return cls_loss
 
-
 class ModifiedSmoothL1Loss(nn.Module):
     def __init__(self, L1_regression_alpha:float):
         super(ModifiedSmoothL1Loss, self).__init__()

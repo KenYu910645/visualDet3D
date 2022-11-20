@@ -238,7 +238,6 @@ class KittiData:
                       |
                 y<----.z
         '''
-        
         calib = KittiCalib(self.calib_path).read_calib_file() if self.output_dict["calib"] else None
         image = read_image(self.image2_path) if self.output_dict["image"] else None
         label = KittiLabel(self.label2_path).read_label_file() if self.output_dict["label"] else None

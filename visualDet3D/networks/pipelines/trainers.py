@@ -23,13 +23,13 @@ def train_mono_detection(data, module:nn.Module,
                      cfg:EasyDict=EasyDict()):
     optimizer.zero_grad()
     # load data
-    image, calibs, labels, bbox2d, bbox_3d = data
+    image, calibs, labels, bbox2d, bbox_3d, loc_3d_ry = data
 
     # create compound array of annotation
     max_length = np.max([len(label) for label in labels])
     if max_length == 0:
         return
-    annotation = compound_annotation(labels, max_length, bbox2d, bbox_3d, cfg.obj_types) #np.arraym, [batch, max_length, 4 + 1 + 7]
+    annotation = compound_annotation(labels, max_length, bbox2d, bbox_3d, loc_3d_ry, cfg.obj_types) #np.arraym, [batch, max_length, 4 + 1 + 7]
 
     # Feed to the network
     classification_loss, regression_loss, loss_dict = module(

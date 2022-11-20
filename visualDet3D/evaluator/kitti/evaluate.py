@@ -21,6 +21,10 @@ def evaluate(label_path="/home/hins/Desktop/M3D-RPN/data/kitti/training/label_2"
     # dt_annos = get_label_annos(result_path)
     dt_annos = get_label_annos(result_path, val_image_ids)
     gt_annos = get_label_annos(label_path, val_image_ids)
+    
+    # print(f"dt_annos = {dt_annos[0]}")
+    # print(f"gt_annos = {gt_annos[0]}")
+
     result_texts = []
     for current_class in current_classes:
         result_texts.append(get_official_eval_result(gt_annos, dt_annos, current_class, dataset_type))

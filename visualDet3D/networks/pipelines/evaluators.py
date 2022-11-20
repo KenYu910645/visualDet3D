@@ -74,7 +74,7 @@ def evaluate_kitti_obj(cfg:EasyDict,
     model.eval()
     result_path = os.path.join(cfg.path.preprocessed_path, result_path_split, 'data')
     
-    # TODO TODO TODO disable rebuild experiment
+    # comment this block if want to disable rebuilding experiment
     if os.path.isdir(result_path):
         os.system("rm -r {}".format(result_path))
         print("clean up the recorder directory of {}".format(result_path))
@@ -85,28 +85,48 @@ def evaluate_kitti_obj(cfg:EasyDict,
     projector = BBox3dProjector().cuda()
     backprojector = BackProjection().cuda()
     
-    # Added by spiderkiller, able to output file_name.txt 
-    with open(cfg.data.val_split_file, 'r') as f:
-        fn_list = [i for i in f.read().splitlines()]
-    print(f"fn_list loaded {len(fn_list)} lines.")
-    assert len(fn_list) == len(dataset_val), 'Number of validation data are not matched, go to /home/lab530/KenYu/visualDet3D/visualDet3D/networks/pipelines/evaluators.py'
-
-    # # TODO TODO TODO tmp
-    for index in tqdm(range(len(dataset_val))):
-        test_one(cfg, index, fn_list, dataset_val, model, test_func, backprojector, projector, result_path)
+    # Added by spiderkiller, able to test one file 
     if "is_running_test_set" in cfg and cfg["is_running_test_set"]:
+        fn_list = [i.split('.')[0] for i in os.listdir(cfg.path.test_path + "/image_2/")]
+        print(f"fn_list load {len(fn_list)} file names.")
+        assert len(fn_list) == len(dataset_val), 'Number of validation data are not matched, go to /home/lab530/KenYu/visualDet3D/visualDet3D/networks/pipelines/evaluators.py'
+        for index in tqdm(range(len(dataset_val))):
+            test_one(cfg, index, fn_list, dataset_val, model, test_func, backprojector, projector, result_path)
         print("Finish evaluation.")
         return
+    else:
+        # Added by spiderkiller, able to output <file_name>.txt 
+        with open(cfg.data.val_split_file, 'r') as f:
+            fn_list = [i for i in f.read().splitlines()]
+        print(f"fn_list loaded {len(fn_list)} lines.")
+        assert len(fn_list) == len(dataset_val), 'Number of validation data are not matched, go to /home/lab530/KenYu/visualDet3D/visualDet3D/networks/pipelines/evaluators.py'
+
+        for index in tqdm(range(len(dataset_val))):
+            test_one(cfg, index, fn_list, dataset_val, model, test_func, backprojector, projector, result_path)
     
     print(f"cfg.dataset_type = {getattr(cfg, 'dataset_type', 'kitti')}")
+    print(f"cfg.obj_types - {cfg.obj_types}") # ['car']
     result_texts = evaluate(
         label_path=os.path.join(cfg.path.data_path, 'label_2'),
         result_path=result_path,
         label_split_file=cfg.data.val_split_file,
-        current_classes=[i for i in range(len(cfg.obj_types))],
+        current_classes=cfg.obj_types,
         gpu=min(cfg.trainer.gpu, torch.cuda.device_count() - 1),
         dataset_type=getattr(cfg, "dataset_type", "kitti"),
     )
+    
+    # I think this is bad because current classes is weird 
+    # result_texts = evaluate(
+    #     label_path=os.path.join(cfg.path.data_path, 'label_2'),
+    #     result_path=result_path,
+    #     label_split_file=cfg.data.val_split_file,
+    #     current_classes=[i for i in range(len(cfg.obj_types))],
+    #     gpu=min(cfg.trainer.gpu, torch.cuda.device_count() - 1),
+    #     dataset_type=getattr(cfg, "dataset_type", "kitti"),
+    # )
+
+
+
     for class_index, result_text in enumerate(result_texts):
         if writer is not None:
             writer.add_text("validation result {}".format(class_index), result_text.replace(' ', '&nbsp;').replace('\n', '  \n'), epoch_num + 1)

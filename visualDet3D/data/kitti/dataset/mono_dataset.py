@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data
 from visualDet3D.utils.utils import alpha2theta_3d, theta2alpha_3d
-from visualDet3D.data.kitti.kittidata import KittiData, KittiObj, KittiCalib
+from visualDet3D.data.kitti.kittidata import KittiData, KittiObj, KittiCalib, KittiLabel
 from visualDet3D.data.pipeline import build_augmentator
 import os
 import pickle
@@ -68,15 +68,9 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         abs_corner, homo_corner, _ = self.projector(bbox3d_origin, bbox3d_origin.new(P2))
         for i, obj in enumerate(transformed_label):
             extended_center = np.array([obj.x, obj.y - 0.5 * obj.h, obj.z, 1])[:, np.newaxis] #[4, 1]
-            extended_bottom = np.array([obj.x, obj.y, obj.z, 1])[:, np.newaxis] #[4, 1]
             image_center = (P2 @ extended_center)[:, 0] #[3]
             image_center[0:2] /= image_center[2]
-
-            image_bottom = (P2 @ extended_bottom)[:, 0] #[3]
-            image_bottom[0:2] /= image_bottom[2]
-            
-            bbox3d_state[i] = np.concatenate([image_center,
-                                                [obj.w, obj.h, obj.l, obj.alpha]]) #[7]
+            bbox3d_state[i] = np.concatenate([image_center,[obj.w, obj.h, obj.l, obj.alpha]]) #[7]
 
         max_xy, _= homo_corner[:, :, 0:2].max(dim = 1)  # [N,2]
         min_xy, _= homo_corner[:, :, 0:2].min(dim = 1)  # [N,2]
@@ -85,7 +79,7 @@ class KittiMonoDataset(torch.utils.data.Dataset):
 
         bbox2d = result.cpu().numpy()
 
-        if self.is_reproject:
+        if self.is_reproject: # Use 3d bbox and 2d bbox relation to reproject
             for i in range(len(transformed_label)):
                 transformed_label[i].bbox_l = bbox2d[i, 0]
                 transformed_label[i].bbox_t = bbox2d[i, 1]
@@ -118,12 +112,19 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         for obj in kitti_data.label:
             if obj.type in self.obj_types:
                 label.append(obj)
+
+        # label transformation happen here
+        # print(f"label = {(label[0].bbox_l, label[0].bbox_t, label[0].bbox_r, label[0].bbox_b)}")
         transformed_image, transformed_P2, transformed_label = self.transform(image, p2=deepcopy(calib.P2), labels=deepcopy(label))
+        # print(f"transformed_label = {(transformed_label[0].bbox_l, transformed_label[0].bbox_t, transformed_label[0].bbox_r, transformed_label[0].bbox_b)}")
         bbox3d_state = np.zeros([len(transformed_label), 7]) #[camera_x, camera_y, z, w, h, l, alpha]
         if len(transformed_label) > 0:
             transformed_label, bbox3d_state = self._reproject(transformed_P2, transformed_label)
+        # print(f"transformed_label after _reproject = {(transformed_label[0].bbox_l, transformed_label[0].bbox_t, transformed_label[0].bbox_r, transformed_label[0].bbox_b)}")
 
         bbox2d = np.array([[obj.bbox_l, obj.bbox_t, obj.bbox_r, obj.bbox_b] for obj in transformed_label])
+
+        loc_3d_ry = np.array( [[obj.x, obj.y, obj.z, obj.ry] for obj in transformed_label] )
         
         output_dict = {'calib': transformed_P2,
                        'image': transformed_image,
@@ -131,7 +132,8 @@ class KittiMonoDataset(torch.utils.data.Dataset):
                        'bbox2d': bbox2d, #[N, 4] [x1, y1, x2, y2]
                        'bbox3d': bbox3d_state, 
                        'original_shape':image.shape,
-                       'original_P':calib.P2.copy()}
+                       'original_P':calib.P2.copy(),
+                       'loc_3d_ry':loc_3d_ry,}
         return output_dict
 
     def __len__(self):
@@ -149,11 +151,12 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         label = [item['label'] for item in batch]
         bbox2ds = [item['bbox2d'] for item in batch]
         bbox3ds = [item['bbox3d'] for item in batch]
-        # This line will cause warning: 
+        loc_3d_ry = [item['loc_3d_ry'] for item in batch]
+        # This line will cause warning:
         # Creating a tensor from a list of numpy.ndarrays is extremely slow. 
         # Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor.
         # add np.array() to avoid warning.
-        return torch.from_numpy(rgb_images).float(), torch.tensor(np.array(calib)).float(), label, bbox2ds, bbox3ds
+        return torch.from_numpy(rgb_images).float(), torch.tensor(np.array(calib)).float(), label, bbox2ds, bbox3ds, loc_3d_ry
 
 @DATASET_DICT.register_module
 class NuscMonoDataset(KittiMonoDataset):

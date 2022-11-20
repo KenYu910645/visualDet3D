@@ -743,7 +743,7 @@ def get_official_eval_result(gt_annos,
                                 [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5, 0.5],
                                 [0.5, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5, 0.5]])
     min_overlaps = np.stack([overlap_mod, overlap_easy], axis=0)  # [2, 3, 5]
-    print(f"dataset_type in innest fuctino : {dataset_type}")
+    print(f"dataset_type in innest function : {dataset_type}")
     if dataset_type == "nuscene":
         class_to_name = {
             0: 'barrier',
@@ -778,6 +778,7 @@ def get_official_eval_result(gt_annos,
         else:
             current_classes_int.append(curcls)
     current_classes = current_classes_int
+    print(f"current_classes = {current_classes}") # [0]
     min_overlaps = min_overlaps[:, :, current_classes]
     result = ''
     # check whether alpha is valid
