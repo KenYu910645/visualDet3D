@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Preprocessing
 # ./launchers/det_precompute.sh config/data_augumentation/baseline.py train
 # ./launchers/det_precompute.sh config/data_augumentation/viz_da.py train
