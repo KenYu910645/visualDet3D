@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/anchor_gen' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/iou/iou' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 # path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
 
 if not os.path.isdir(path.project_path):
@@ -84,11 +84,11 @@ data = edict(
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'val_all.txt'),
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'train.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'val.txt'),
     use_right_image = False,
-    max_occlusion = 999, # TODO disable filting object
-    min_z        = -999,
+    max_occlusion = 2, # 999, # TODO disable filting object
+    min_z        = 3,
 )
 
 data.augmentation = edict(
@@ -117,7 +117,7 @@ cfg.data = data
 detector = edict()
 detector.obj_types = cfg.obj_types
 detector.exp = cfg.exp
-detector.name = 'BevAnkYolo3D' # 'BevAnkYolo3D' # 'GroundAwareYolo3D'
+detector.name = 'GroundAwareYolo3D' # 'BevAnkYolo3D' # 'GroundAwareYolo3D'
 detector.backbone = edict(
     depth=101,
     pretrained=True,
@@ -136,7 +136,7 @@ head_loss = edict(
     match_low_quality=False,
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
-    iou_type = "iou", # "baseline", "ciou"
+    iou_type = "iou", # "iou", "ciou"
 )
 head_test = edict(
     score_thr = 0.75, # TODO, 0.75

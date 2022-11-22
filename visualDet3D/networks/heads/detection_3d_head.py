@@ -3,7 +3,7 @@ import torch.nn as nn
 from torchvision.ops import nms
 from easydict import EasyDict
 import numpy as np
-from visualDet3D.networks.heads.losses import SigmoidFocalLoss, ModifiedSmoothL1Loss
+from visualDet3D.networks.heads.losses import CIoULoss, DIoULoss, SigmoidFocalLoss, ModifiedSmoothL1Loss, IoULoss
 from visualDet3D.networks.heads.anchors import Anchors
 from visualDet3D.networks.utils.utils import calc_iou, BackProjection, BBox3dProjector
 from visualDet3D.networks.lib.fast_utils.hill_climbing import post_opt
@@ -38,8 +38,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.clipper = ClipBoxes()
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
         self.exp = exp
-        self.iou_type = loss_cfg.iou_type
-        print(f"iou_type = {self.iou_type}")
+        print(f"iou_type = {self.loss_cfg.iou_type}")
 
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -99,6 +98,15 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.register_buffer("balance_weights", torch.tensor(balance_weight, dtype=torch.float32))
         self.loss_cls = SigmoidFocalLoss(gamma=focal_loss_gamma, balance_weights=self.balance_weights)
         self.loss_bbox = ModifiedSmoothL1Loss(L1_regression_alpha)
+
+        if self.loss_cfg.iou_type == "iou":
+            self.loss_iou = IoULoss()
+        elif self.loss_cfg.iou_type == "diou":
+            self.loss_iou = DIoULoss()
+        elif self.loss_cfg.iou_type == "ciou":
+            self.loss_iou = CIoULoss()
+        else:
+            self.loss_iou = IoULoss()
 
         regression_weight = kwargs.get("regression_weight", [1 for _ in range(self.num_regression_loss_terms)]) #default 12 only use in 3D
         self.register_buffer("regression_weight", torch.tensor(regression_weight, dtype=torch.float))
@@ -503,7 +511,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         max_score = max_score[mask]
         bboxes    = bboxes[mask]
 
-        print(f"bboxes before nms = {bboxes.shape}") # [184, 11]
+        # print(f"bboxes before nms = {bboxes.shape}") # [184, 11]
         if cls_agnostic:
             keep_inds = nms(bboxes[:, :4], max_score, nms_iou_thr)
         else:
@@ -514,7 +522,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         bboxes      = bboxes[keep_inds]
         max_score   = max_score[keep_inds]
         label       = label[keep_inds]
-        print(f"bboxes after nms = {bboxes.shape}") # [1, 11]
+        # print(f"bboxes after nms = {bboxes.shape}") # [1, 11]
         
         if is_post_opt:
             max_score, bboxes, label = self._post_process(max_score, bboxes, label, P2s)
@@ -532,6 +540,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         anchor_mean_std_3d = anchors['anchor_mean_std_3d']
         cls_loss = []
         reg_loss = []
+        iou_loss = []
         number_of_positives = []
         for j in range(batch_size):
             
@@ -554,6 +563,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             if len(bbox_annotation) == 0:
                 cls_loss.append(torch.tensor(0).cuda().float())
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
+                iou_loss.append(0.0)
                 number_of_positives.append(0)
                 continue
             
@@ -585,7 +595,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             # print(f"assignement_result_dict['labels'] = {assignement_result_dict['labels'].shape}") # [7548]
             # print(assignement_result_dict['assigned_gt_inds'].unique()) # -1,  0,  1, 0 means negative, 1 meams positive, 
 
-            # I thikn this sample function does nothing
+            # I think this sample function does nothing
             sampling_result_dict    = self._sample(assignement_result_dict, anchor_j, bbox_annotation) # doesn't involve prediction
 
             # print(f"n_pos, n_neg = {(len(sampling_result_dict['pos_inds']), len(sampling_result_dict['neg_inds']))}")
@@ -653,11 +663,23 @@ class AnchorBasedDetection3DHead(nn.Module):
                         reg_loss_j = self.loss_bbox(pos_bbox_targets, reg_pred[pos_inds]) # This is the first time, loss() used prediction result
                         alpha_loss_j = self.alpha_loss(pos_alpha_score, targets_alpha_cls)
                         loss_j = torch.cat([reg_loss_j, alpha_loss_j], dim=1) * self.regression_weight #[N, 13]
+                        # print(f"loss_j = {loss_j.shape}") # [647, 13]
                         reg_loss.append(loss_j.mean(dim=0)) #[13]
                         number_of_positives.append(bbox_annotation.shape[0])
+
+                    # Get IOU loss 
+                    # print(f"pos_gt_bboxes[:, :4] = {pos_gt_bboxes[:, :4].shape}")
+                    pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
+                    pos_target_decoded, _        = self._decode(pos_anchor, pos_bbox_targets,  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
+                    # print(f"pos_prediction_decoded[:, :4] = {pos_prediction_decoded[mask, :4]}")
+                    # print(f"pos_target_decoded[:, :4] = {pos_target_decoded[mask, :4]}")
+                    loss_iou_j = self.loss_iou(pos_prediction_decoded[mask, :4], pos_target_decoded[mask, :4])
+                    iou_loss.append(loss_iou_j.mean().item())
+
             else:
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
                 number_of_positives.append(bbox_annotation.shape[0])
+                iou_loss.append(0.0)
 
             if len(neg_inds) > 0:
                 labels[neg_inds, :] = 0
@@ -665,15 +687,25 @@ class AnchorBasedDetection3DHead(nn.Module):
             # Get classification loss
             cls_loss.append(self.loss_cls(cls_score, labels).sum() / (len(pos_inds) + len(neg_inds)))
         
-        weights = reg_pred.new(number_of_positives).unsqueeze(1) #[B, 1]
         cls_loss = torch.stack(cls_loss).mean(dim=0, keepdim=True)
         reg_loss = torch.stack(reg_loss, dim=0) #[B, 12]
+        iou_loss = reg_loss.new(iou_loss)
 
+        # Weight regression loss by number of ground true in each images
+        weights = reg_pred.new(number_of_positives).unsqueeze(1) #[B, 1]
         weighted_regression_losses = torch.sum(weights * reg_loss / (torch.sum(weights) + 1e-6), dim=0)
         reg_loss = weighted_regression_losses.mean(dim=0, keepdim=True)
         
-        print(f"cls_loss, reg_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0])}")
-        return cls_loss, reg_loss, dict(cls_loss=cls_loss, reg_loss=reg_loss, total_loss=cls_loss + reg_loss)
+        # Weight IOu loss by number of ground true in each images
+        weighted_iou_losses = torch.sum(weights * iou_loss / (torch.sum(weights) + 1e-6), dim=0)
+        iou_loss = weighted_iou_losses.mean(dim=0, keepdim=True)
+
+        print(f"cls_loss, reg_loss, iou_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0], iou_loss.detach().cpu().numpy()[0])}")
+        
+        return dict(cls_loss=cls_loss,
+                    reg_loss=reg_loss,
+                    iou_loss=iou_loss,
+                    total_loss=cls_loss + reg_loss + iou_loss)
 
 class StereoHead(AnchorBasedDetection3DHead):
     def init_layers(self, num_features_in,

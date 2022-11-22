@@ -27,6 +27,8 @@ class MonoFlexHead(KM3DHead):
                            target:torch.Tensor)->torch.Tensor:
         pred_box = torch.cat([output[..., 0:2] * -1, output[..., 2:]], dim=-1)
         targ_box = torch.cat([target[..., 0:2] * -1, target[..., 2:]], dim=-1)
+        
+        # Calculate mean
         loss = self.bbox2d_loss(pred_box, targ_box).sum()
         loss = loss / (len(output) + 1e-4)
         return loss

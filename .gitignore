@@ -124,4 +124,6 @@ workdirs
 # actions
 action0.sh
 action1.sh
+action2.sh
+action3.sh
 

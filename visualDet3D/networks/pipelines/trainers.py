@@ -32,18 +32,24 @@ def train_mono_detection(data, module:nn.Module,
     annotation = compound_annotation(labels, max_length, bbox2d, bbox_3d, loc_3d_ry, cfg.obj_types) #np.arraym, [batch, max_length, 4 + 1 + 7]
 
     # Feed to the network
-    classification_loss, regression_loss, loss_dict = module(
-            [image.cuda().contiguous(), image.new(annotation).cuda(), calibs.cuda()])
+    # classification_loss, regression_loss, loss_dict = module(
+    #         [image.cuda().contiguous(), image.new(annotation).cuda(), calibs.cuda()])
+    # classification_loss = classification_loss.mean()
+    # regression_loss = regression_loss.mean()
 
-    classification_loss = classification_loss.mean()
-    regression_loss = regression_loss.mean()
+    loss_dict = module([image.cuda().contiguous(), image.new(annotation).cuda(), calibs.cuda()])
 
     # Record loss in a average meter
     if loss_logger is not None:
         loss_logger.update(loss_dict)
-
-    loss = classification_loss + regression_loss
-
+       
+    if  cfg.detector.loss.iou_type == 'iou' or\
+        cfg.detector.loss.iou_type == 'ciou' or\
+        cfg.detector.loss.iou_type == 'diou':
+        loss = loss_dict['cls_loss'].mean() + loss_dict['reg_loss'].mean() + loss_dict['iou_loss'].mean()
+    else:
+        loss = loss_dict['cls_loss'].mean() + loss_dict['reg_loss'].mean()
+    
     if bool(loss.item() == 0):
         return
     loss.backward()

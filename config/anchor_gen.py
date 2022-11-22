@@ -9,10 +9,10 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 30,
+    max_epochs = 300,
     disp_iter = 10,
-    save_iter = 5,
-    test_iter = 5,
+    save_iter = 10,
+    test_iter = 10,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -84,10 +84,10 @@ data = edict(
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'val_all.txt'),
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
     use_right_image = False,
-    max_occlusion = 999, # TODO disable filting object
+    max_occlusion = 999, # disable filting object
     min_z        = -999,
 )
 

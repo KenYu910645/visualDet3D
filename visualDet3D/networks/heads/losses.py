@@ -91,32 +91,123 @@ class ModifiedSmoothL1Loss(nn.Module):
 
 class IoULoss(nn.Module):
     """Some Information about IoULoss"""
-    def forward(self, preds:torch.Tensor, targets:torch.Tensor, eps:float=1e-8) -> torch.Tensor:
+    def forward(self, preds:torch.Tensor, targs:torch.Tensor, eps:float=1e-8) -> torch.Tensor:
         """IoU Loss
 
         Args:
             preds (torch.Tensor): [x1, y1, x2, y2] predictions [*, 4]
-            targets (torch.Tensor): [x1, y1, x2, y2] targets [*, 4]
+            targs (torch.Tensor): [x1, y1, x2, y2] targets [*, 4]
 
         Returns:
             torch.Tensor: [-log(iou)] [*]
         """
         
         # overlap
-        lt = torch.max(preds[..., :2], targets[..., :2])
-        rb = torch.min(preds[..., 2:], targets[..., 2:])
+        lt = torch.max(preds[..., :2], targs[..., :2]) # Most left-top point of intersection
+        rb = torch.min(preds[..., 2:], targs[..., 2:]) # Most right-bottom point of intersection
         wh = (rb - lt).clamp(min=0)
         overlap = wh[..., 0] * wh[..., 1]
 
         # union
-        ap = (preds[..., 2] - preds[..., 0]) * (preds[..., 3] - preds[..., 1])
-        ag = (targets[..., 2] - targets[..., 0]) * (targets[..., 3] - targets[..., 1])
+        ap = (preds[..., 2] - preds[..., 0]) * (preds[..., 3] - preds[..., 1]) # Area perdict
+        ag = (targs[..., 2] - targs[..., 0]) * (targs[..., 3] - targs[..., 1]) # Area groundtrue
         union = ap + ag - overlap + eps
 
         # IoU
         ious = overlap / union
         ious = torch.clamp(ious, min=eps)
+
         return -ious.log()
+
+class DIoULoss(nn.Module):
+    """Some Information about IoULoss"""
+    def forward(self, preds:torch.Tensor, targs:torch.Tensor, eps:float=1e-8) -> torch.Tensor:
+        """DIoU Loss
+        Args:
+            preds (torch.Tensor): [x1, y1, x2, y2] predictions [*, 4]
+            targs (torch.Tensor): [x1, y1, x2, y2] targets [*, 4]
+        Returns:
+            torch.Tensor: [-log(iou)] [*]
+        """
+        
+        # overlap
+        lt = torch.max(preds[..., :2], targs[..., :2]) # Most left-top point of intersection
+        rb = torch.min(preds[..., 2:], targs[..., 2:]) # Most right-bottom point of intersection
+        wh = (rb - lt).clamp(min=0)
+        overlap = wh[..., 0] * wh[..., 1]
+
+        # union
+        ap = (preds[..., 2] - preds[..., 0]) * (preds[..., 3] - preds[..., 1]) # Area perdict
+        ag = (targs[..., 2] - targs[..., 0]) * (targs[..., 3] - targs[..., 1]) # Area groundtrue
+        union = ap + ag - overlap + eps
+
+        # IoU
+        ious = overlap / union
+        ious = torch.clamp(ious, min=eps)
+
+        # Get distance between center d_2
+        xc_pred = (preds[..., 2] + preds[..., 0]) / 2
+        yc_pred = (preds[..., 3] + preds[..., 1]) / 2
+        xc_targ = (targs[..., 2] + targs[..., 0]) / 2
+        yc_targ = (targs[..., 3] + targs[..., 1]) / 2
+        d_2 = torch.pow(xc_targ - xc_pred, 2) + torch.pow(yc_targ - yc_pred, 2)
+
+        # Get diagnal distance
+        lt = torch.min(preds[..., :2], targs[..., :2]) # Most left-top point of two bbox
+        rb = torch.max(preds[..., 2:], targs[..., 2:]) # Most right-bottom point of tow bbox
+        c_2 = torch.pow(lt[..., 0] - rb[..., 0], 2) + torch.pow(lt[..., 1] - rb[..., 1], 2)
+        
+        return 1 - ious + d_2/c_2
+
+class CIoULoss(nn.Module):
+    """Some Information about IoULoss"""
+    def forward(self, preds:torch.Tensor, targs:torch.Tensor, eps:float=1e-8) -> torch.Tensor:
+        """CIoU Loss
+        Args:
+            preds (torch.Tensor): [x1, y1, x2, y2] predictions [*, 4]
+            targs (torch.Tensor): [x1, y1, x2, y2] targets [*, 4]
+        Returns:
+            torch.Tensor: [-log(iou)] [*]
+        """
+        # overlap
+        lt = torch.max(preds[..., :2], targs[..., :2]) # Most left-top point of intersection
+        rb = torch.min(preds[..., 2:], targs[..., 2:]) # Most right-bottom point of intersection
+        wh = (rb - lt).clamp(min=0)
+        overlap = wh[..., 0] * wh[..., 1]
+
+        # union
+        ap = (preds[..., 2] - preds[..., 0]) * (preds[..., 3] - preds[..., 1]) # Area perdict
+        ag = (targs[..., 2] - targs[..., 0]) * (targs[..., 3] - targs[..., 1]) # Area groundtrue
+        union = ap + ag - overlap + eps
+
+        # IoU
+        ious = overlap / union
+        ious = torch.clamp(ious, min=eps)
+
+        # Get distance between center d_2
+        xc_pred = (preds[..., 2] + preds[..., 0]) / 2
+        yc_pred = (preds[..., 3] + preds[..., 1]) / 2
+        xc_targ = (targs[..., 2] + targs[..., 0]) / 2
+        yc_targ = (targs[..., 3] + targs[..., 1]) / 2
+        d_2 = torch.pow(xc_targ - xc_pred, 2) + torch.pow(yc_targ - yc_pred, 2)
+
+        # Get diagnal distance c_2
+        lt = torch.min(preds[..., :2], targs[..., :2]) # Most left-top point of two bbox
+        rb = torch.max(preds[..., 2:], targs[..., 2:]) # Most right-bottom point of tow bbox
+        c_2 = torch.pow(lt[..., 0] - rb[..., 0], 2) + torch.pow(lt[..., 1] - rb[..., 1], 2)
+        
+        # aspect ratio V
+        w_pred = preds[..., 2] - preds[..., 0]
+        h_pred = preds[..., 3] - preds[..., 1]
+        w_targ = targs[..., 2] - targs[..., 0]
+        h_targ = targs[..., 3] - targs[..., 1]
+        V = 4 / np.pi**2 * torch.pow( torch.atan2(w_pred, h_pred) - torch.atan2(w_targ, h_targ) , 2)
+        
+        # Get weight matrix alpha
+        alpha = V / ((1-ious) + V)
+        alpha[ious < 0.5] = 0 # alpha == 0 if IOU < 0.5
+
+        return 1 - ious + d_2/c_2 + alpha*V
 
 class DisparityLoss(nn.Module):
     """Some Information about DisparityLoss"""

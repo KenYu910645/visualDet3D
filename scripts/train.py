@@ -91,6 +91,10 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
 
     #
     print(f"Experiment Setting: {cfg.exp}")
+
+    # Set default value for iou_type
+    cfg.detector.loss.iou_type = getattr(cfg.detector.loss, 'iou_type', 'baseline')
+    print(f"iou_type = {cfg.detector.loss.iou_type}")
     
     ## Create the model
     detector = DETECTOR_DICT[cfg.detector.name](cfg.detector)

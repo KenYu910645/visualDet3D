@@ -503,6 +503,7 @@ class BevAnk3DHead(nn.Module):
             # TODO, i don't think negative sample is properly used????? -1 
             n_pos = pos_inds.shape[0]
             n_neg = neg_inds.shape[0]
+
             # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078)
 
             if len(pos_inds) > 0:
@@ -511,7 +512,7 @@ class BevAnk3DHead(nn.Module):
                 reg_targets, hdg_targets = self._encode(self.anchors[pos_inds], anno_j[anchor_assignment[pos_inds], :])
                 
                 # Assign class in labels
-                labels[pos_inds, :] = 0 # negative sample for other classes
+                labels[pos_inds, :] = 0 # negative sample for other classes 
                 labels[pos_inds, anno_j[anchor_assignment[pos_inds], 4].long() ] = 1 # postive sample for this class
 
                 # Loss function, TODO, consider to decode before loss?, self.decode_before_loss = False 
@@ -527,18 +528,28 @@ class BevAnk3DHead(nn.Module):
 
                 reg_loss.append(loss_weighted.mean(dim=0)) #[13]
                     
-            else: # if len(pos_inds) == 0:
+            else: # if len(pos_inds) == 0: # TODO how to assign negative sample
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
             
             # Assign negative sample in labels
-            if len(neg_inds) > 0: labels[neg_inds, :] = 0
+            if len(neg_inds) > 0: labels[neg_inds, :] = 0 # Negatvie sample
 
             # Classification Loss
             cls_loss.append(self.cls_loss(cls_pred, labels).sum() / (len(pos_inds) + len(neg_inds)))
+            # print(f"labels.shape = {labels.shape}") # [9332, 1]
+            unique, counts = np.unique(labels.cpu().numpy(), return_counts=True)
+            anchor_assign = dict(zip(unique, counts)) # {0.0: 9308, 1.0: 24}
+
+
+        # print(f"cls_loss.shape = {len(cls_loss)}") # [8, ..]
+        # print(f"reg_loss.shape = {len(reg_loss)}") # [8, ..]
         
         # Get classify loss and regression loss
         cls_loss = torch.stack(cls_loss).mean(dim=0, keepdim=True)
         reg_loss = torch.stack(reg_loss, dim=0) #[B, 12]
+
+
+
         
         # Weighted regression loss by number of ground true in each image
         n_gts = [torch.sum(annotations[j, :, 4] >= 0) for j in range(annotations.shape[0])]
@@ -551,6 +562,6 @@ class BevAnk3DHead(nn.Module):
         print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
         print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
         print(f"cls_loss, reg_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0])}")
-        return cls_loss, reg_loss, dict(cls_loss = cls_loss, 
-                                        reg_loss = reg_loss, 
-                                        total_loss = cls_loss + reg_loss)
+        return dict(cls_loss = cls_loss, 
+                    reg_loss = reg_loss, 
+                    total_loss = cls_loss + reg_loss)

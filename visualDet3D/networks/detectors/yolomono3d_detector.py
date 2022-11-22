@@ -60,9 +60,12 @@ class Yolo3D(nn.Module):
         # print(f"anchors['mask'] = {anchors['mask'].shape}") # [8, 46080]
         # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2], z, sin(\t), cos(\t)
 
-        cls_loss, reg_loss, loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
-
-        return cls_loss, reg_loss, loss_dict
+        # cls_loss, reg_loss, loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
+        # return cls_loss, reg_loss, loss_dict
+        # 
+        loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
+        return loss_dict
+        
     
 
     def build_tensor_grid(self, shape):
