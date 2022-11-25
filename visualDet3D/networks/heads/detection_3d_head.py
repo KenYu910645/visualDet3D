@@ -125,7 +125,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             This function decide which anchors should be assign to ground true and make it a "positive anchor"
             I believe "positive anchor" means that anchor is responsible to predict that ground true
             Note that it use 2D IOU to determine the assignment not by 3D IOU
-            This function use max 2d IOU to assign gt to anchor, making some anchor unattened......
+            This function use max 2d IOU to assign gt to anchor, making some groundtrue unattened......
 
             According to default config.py, anchor box that IOU with gt is smaller than 0.4 is considered as negative sample
             and anchor's IOU greater than 0.5 are considered as positive
@@ -165,7 +165,7 @@ class AnchorBasedDetection3DHead(nn.Module):
 
         unique, counts = np.unique(argmax_overlaps.cpu().numpy(), return_counts=True)
         # print(dict(zip(unique, counts))) # {0: 2555, 1: 529, 2: 552, 3: 224}
-        
+        # print(max_overlaps[ argmax_overlaps == 1 ]  )
         # print(f"argmax_overlaps = {argmax_overlaps.shape}") # [3860]
         # print(f"max_overlaps = {max_overlaps.shape}") # [3860]
         # argmax_overlaps
@@ -527,6 +527,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         if is_post_opt:
             max_score, bboxes, label = self._post_process(max_score, bboxes, label, P2s)
 
+        print(f"Number of detection = {bboxes.shape[0]}")
         return max_score, bboxes, label
 
     def loss(self, cls_scores, reg_preds, anchors, annotations, P2s):
@@ -570,6 +571,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             # print(f"anchor_j.shape = {anchor_j.shape}") # [7548, 4]
             # print(f"bbox_annotation.shape = {bbox_annotation.shape}") # [A, 12], where A is how many postive gts does this image have 
 
+            # This is like retinanet's and YOLO's MaxIouAssignerm 
             assignement_result_dict = self._assign(anchor_j, bbox_annotation, **self.loss_cfg) # doesn't involve prediction
             
             # print(f"assignement_result_dict['num_gt'] = {assignement_result_dict['num_gt']}") # 4 
@@ -612,7 +614,11 @@ class AnchorBasedDetection3DHead(nn.Module):
 
             pos_inds = sampling_result_dict['pos_inds']
             neg_inds = sampling_result_dict['neg_inds']
-            
+            #
+            n_pos = pos_inds.shape[0]
+            n_neg = neg_inds.shape[0]
+            print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078)
+
             if len(pos_inds) > 0:
                 pos_assigned_gt_label = bbox_annotation[sampling_result_dict['pos_assigned_gt_inds'], 4].long()
                 
@@ -684,6 +690,14 @@ class AnchorBasedDetection3DHead(nn.Module):
             if len(neg_inds) > 0:
                 labels[neg_inds, :] = 0
             
+            print(f"cls_score.mean() = {cls_score.mean()}")
+            print(f"means of  positive = {cls_score[ cls_score > 0 ].mean()}")
+            # print(f"Min of  positive = {cls_score[ cls_score > 0 ]}")
+            print(f"Number of positive in cls_pred = {torch.numel(cls_score[ cls_score > 0 ])}")
+            print(f"Number of negative in cls_pred = {torch.numel(cls_score[ cls_score < 0 ])}")
+            print(f"self.cls_loss(cls_pred, labels).sum() = {self.loss_cls(cls_score, labels).sum()}")
+            print(f"(len(pos_inds) + len(neg_inds)) = {(len(pos_inds) + len(neg_inds))}")
+            
             # Get classification loss
             cls_loss.append(self.loss_cls(cls_score, labels).sum() / (len(pos_inds) + len(neg_inds)))
         
@@ -699,7 +713,10 @@ class AnchorBasedDetection3DHead(nn.Module):
         # Weight IOu loss by number of ground true in each images
         weighted_iou_losses = torch.sum(weights * iou_loss / (torch.sum(weights) + 1e-6), dim=0)
         iou_loss = weighted_iou_losses.mean(dim=0, keepdim=True)
-
+        
+        l = weighted_regression_losses.detach().cpu().numpy()
+        print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
+        print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
         print(f"cls_loss, reg_loss, iou_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0], iou_loss.detach().cpu().numpy()[0])}")
         
         return dict(cls_loss=cls_loss,

@@ -56,6 +56,14 @@ class Yolo3D(nn.Module):
 
         cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch)) # [8, 46080, 2], [8, 46080, 12] 
         anchors = self.bbox_head.get_anchor(img_batch, P2)
+
+        # import pickle
+        # import random
+        # with open(f"GAC_original_all_anchor_{int(100*random.random())}.pkl", 'wb') as f:
+        #     pickle.dump(anchors, f)
+        #     print("Write to pkl")
+
+        # 
         # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
         # print(f"anchors['mask'] = {anchors['mask'].shape}") # [8, 46080]
         # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2], z, sin(\t), cos(\t)
@@ -65,8 +73,6 @@ class Yolo3D(nn.Module):
         # 
         loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
         return loss_dict
-        
-    
 
     def build_tensor_grid(self, shape):
         """

@@ -6,7 +6,7 @@ import torch.nn as nn
 from visualDet3D.networks.utils.utils import calc_iou
 from visualDet3D.networks.lib.disparity_loss import stereo_focal_loss
 from visualDet3D.utils.timer import profile
-
+from torch.nn.functional import logsigmoid
 
 class SigmoidFocalLoss(nn.Module):
     def __init__(self, gamma=0.0, balance_weights=torch.tensor([1.0], dtype=torch.float)):
@@ -14,30 +14,36 @@ class SigmoidFocalLoss(nn.Module):
         self.gamma = gamma
         self.register_buffer("balance_weights", balance_weights)
 
-    def forward(self, classification:torch.Tensor, 
+    def forward(self, cls_pred:torch.Tensor, 
                       targets:torch.Tensor, 
                       gamma:Optional[float]=None, 
                       balance_weights:Optional[torch.Tensor]=None)->torch.Tensor:
         """
             input:
-                classification  :[..., num_classes]  linear output
+                cls_pred  :[..., num_classes]  linear output
                 targets         :[..., num_classes] == -1(ignored), 0, 1
             return:
                 cls_loss        :[..., num_classes]  loss with 0 in trimmed or ignored indexes 
+            balance_weights: Emphasis on positive sample, it's 20 times more important than background
+            gamma == 2.0 in config.py
         """
         if gamma is None:
             gamma = self.gamma
         if balance_weights is None:
             balance_weights = self.balance_weights
 
-        probs = torch.sigmoid(classification) #[B, N, 1]
+        probs = torch.sigmoid(cls_pred) #[B, N, 1]
         focal_weight = torch.where(torch.eq(targets, 1.), 1. - probs, probs)
         focal_weight = torch.pow(focal_weight, gamma)
 
-        bce = -(targets * nn.functional.logsigmoid(classification)) * balance_weights - ((1-targets) * nn.functional.logsigmoid(-classification)) #[B, N, 1]
+        # Binary Cross1
+        bce = -(     targets  * logsigmoid( cls_pred)) * balance_weights +\
+              -((1 - targets) * logsigmoid(-cls_pred)) #[B, N, 1]
+        
         cls_loss = focal_weight * bce
 
-        ## neglect  0.3 < iou < 0.4 anchors
+        ## neglect  0.3 < iou < 0.4 anchors, ignore -1 entry
+        # print( torch.numel( targets[ targets == -1.0 ] ) )  # 0
         cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape).cuda())
 
         ## clamp over confidence and correct ones to prevent overfitting

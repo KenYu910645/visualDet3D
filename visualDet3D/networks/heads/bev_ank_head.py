@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 from easydict import EasyDict
+from math import pi
 
 import torch
 import torch.nn as nn
@@ -51,7 +52,7 @@ class BeVAnchorFlatten(nn.Module):
         x = [1, 1728, 18, 80]
         '''
         x = x.permute(0, 2, 3, 1) # [B, 18, 80, 1728]
-        x = x.contiguous().view(x.shape[0], 18*80*self.max_anchor, -1) # [B, 207360, 12] or [B, 207360, 2]
+        x = x.contiguous().view(x.shape[0], 1440*self.max_anchor, -1) # [B, 207360, 12] or [B, 207360, 2]
         # Pick valid anchor
         x = x[:, self.anchor_bool_map, :] # [B, 14260, 12] or [B, 14260, 2]
         return x
@@ -278,7 +279,7 @@ class BevAnk3DHead(nn.Module):
         # Use predicted alpha heading to revise ????? TODO
         out_boxes[hdg_prediction[:, 0] < 0.5, -1] += np.pi
 
-        return out_boxes # , mask
+        return out_boxes
 
     def _post_process(self, scores, bboxes, labels, P2s):
         
@@ -337,15 +338,18 @@ class BevAnk3DHead(nn.Module):
         is_post_opt = getattr(self.test_cfg, 'post_optimization', False) # post_optimization=True
 
         cls_preds = cls_preds.sigmoid()
+        # print(f"cls_preds = {cls_preds.shape}") # [1, 9332, 2]
         cls_pred = cls_preds[0][..., 0:self.num_classes]
         hdg_pred = cls_preds[0][..., self.num_classes:self.num_classes+1]
         reg_pred = reg_preds[0]
         
         # Find highest score in all classes
         max_score, label = cls_pred.max(dim=-1) # [14284], [14284]
+        # print(max_score.max())
 
         # Confident score much high than score_thr to be a postive detection
         high_score_mask = (max_score > score_thr)
+
         anchor_det= self.anchors[high_score_mask, :]
         cls_pred  = cls_pred[high_score_mask, :]
         hdg_pred  = hdg_pred[high_score_mask, :]
@@ -361,7 +365,7 @@ class BevAnk3DHead(nn.Module):
         #     bboxes = self.clipper(bboxes, img_batch)
 
         # Non-Maximum Suppresion
-        # print(f"bboxes before nms = {bboxes.shape}") # [1644, 11]
+        
         if cls_agnostic:
             keep_inds = nms(bboxes[:, :4], max_score, nms_iou_thr)
         else:
@@ -370,11 +374,13 @@ class BevAnk3DHead(nn.Module):
             keep_inds = nms(nms_bbox, max_score, nms_iou_thr)
 
         # Filter Box by NMS result
+        # print(f"bboxes before nms = {bboxes.shape}") # [1644, 11]
         bboxes    = bboxes   [keep_inds]
         max_score = max_score[keep_inds]
         label     = label    [keep_inds]
         # print(f"bboxes after nms = {bboxes.shape}") # [1355, 11]
         
+        print(f"Number of detection = {bboxes.shape[0]}")
         # Post Optimization
         if is_post_opt:
             max_score, bboxes, label = self._post_process(max_score, bboxes, label, P2s)
@@ -465,10 +471,9 @@ class BevAnk3DHead(nn.Module):
                 -1 means it's a negative sameple
                  0~self.num_class-1 means it's belong to that gt
             '''
+            '''
             # Anchor assignment by choosing closest anchor 
-            from math import pi
-
-            N_ANCHOR_ASSIGN_TO_GT =4
+            N_ANCHOR_ASSIGN_TO_GT = 4
             # TODO, can this be calcuted vai tensor operation? 
             anchor_assignment = self.anchors.new_full((self.n_anchor, ), -2, dtype=torch.long)
             anno_idx     = self.anchors.new_full((3, n_anno, self.n_anchor), 0)
@@ -499,12 +504,69 @@ class BevAnk3DHead(nn.Module):
             # Get index of postive and negative anchor
             pos_inds = torch.nonzero(anchor_assignment >= 0, as_tuple=False).squeeze()
             neg_inds = torch.nonzero(anchor_assignment ==-1, as_tuple=False).squeeze()
+            '''
+
+            #  Anchor Assignment by (cx, cy, cz)'s distance
+            # anchor_assignment = self.anchors.new_full((self.n_anchor, ), -2, dtype=torch.long)
+            # anno_idx     = self.anchors.new_full((4, n_anno, self.n_anchor), 0)
+            # dist_tensor = self.anchors.new_full((   n_anno, self.n_anchor), 0)
+
+            # for i in range(n_anno):
+            #     anno_idx[0, i, :] = anno_j[i, 5].repeat( self.anchors.shape[0] ) # cx 
+            #     anno_idx[1, i, :] = anno_j[i, 6].repeat( self.anchors.shape[0] ) # cy
+            #     anno_idx[2, i, :] = anno_j[i, 7].repeat( self.anchors.shape[0] ) # cz
+            #     anno_idx[3, i, :] = anno_j[i,15].repeat( self.anchors.shape[0] ) # rot_y
             
-            # TODO, i don't think negative sample is properly used????? -1 
+            # for i in range(n_anno):
+            #     # Calcualte Distance
+            #     dist_tensor[i, :] = abs(self.anchors[:, 5] - anno_idx[0, i, :] ) + abs(self.anchors[:, 6] - anno_idx[1, i, :])
+                
+            #     # Don't use anchor that too far from z3d
+            #     dist_tensor[i, torch.abs(self.anchors[:, 7] - anno_idx[2, i, :]) > 2 ] = float('inf')
+
+            #     # Don't use anchor that heading is in wrong direction
+            #     dist_tensor[i, torch.abs(torch.cos(self.anchors[:, 15] - anno_idx[3, i, :])) < np.pi/4 ] = float('inf')
+
+            # # Assign positive anchor
+            # for i in range(n_anno):
+            #     anchor_assignment[ dist_tensor[i, :] < 16*2 ]  = i
+            
+            # # Assign negative anchor
+            # anchor_assignment[ anchor_assignment < 0 ] = -1
+
+            # # Get index of postive and negative anchor
+            # pos_inds = torch.nonzero(anchor_assignment >= 0, as_tuple=False).squeeze()
+            # neg_inds = torch.nonzero(anchor_assignment ==-1, as_tuple=False).squeeze()
+            
+            anchor_assignment = self.anchors.new_full((self.n_anchor, ), -1, dtype=torch.long)
+            dist_tensor = self.anchors.new_full((self.n_anchor, ), 0)
+            for i in range(n_anno):
+                # Calcualte Distance
+                dist_tensor = abs(self.anchors[:, 5] - anno_j[i, 5] ) + abs(self.anchors[:, 6] - anno_j[i, 6])
+
+                # Don't use anchor that heading is in wrong direction
+                dist_tensor[torch.abs(torch.cos(self.anchors[:, 15] - anno_j[i, 15])) < np.pi/4 ] = float('inf')
+
+                # Assign positive anchor, Don't use anchor that too far from z3d
+                anchor_assignment[ torch.logical_and( dist_tensor <= 16*2, torch.abs(self.anchors[:, 7] - anno_j[i, 7]) < 2) ] = i
+
+                # Assign ignore anchor 
+                anchor_assignment[ torch.logical_and( dist_tensor <= 16*2, torch.abs(self.anchors[:, 7] - anno_j[i, 7]) >= 2)] = -2
+            
+                # Assign negative anchor
+                # anchor_assignment[ anchor_assignment < 0 ] = -1
+
+            # Get index of postive and negative anchor
+            pos_inds = torch.nonzero(anchor_assignment >= 0, as_tuple=False).squeeze()
+            neg_inds = torch.nonzero(anchor_assignment ==-1, as_tuple=False).squeeze()
+            ign_inds = torch.nonzero(anchor_assignment ==-2, as_tuple=False).squeeze()
+            
+            #
             n_pos = pos_inds.shape[0]
             n_neg = neg_inds.shape[0]
+            n_ign = ign_inds.shape[0]
 
-            # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078)
+            # print(f"n_pos, n_neg, n_ign = {(n_pos, n_neg, n_ign)}") # (86, 14078)
 
             if len(pos_inds) > 0:
                 
@@ -515,7 +577,6 @@ class BevAnk3DHead(nn.Module):
                 labels[pos_inds, :] = 0 # negative sample for other classes 
                 labels[pos_inds, anno_j[anchor_assignment[pos_inds], 4].long() ] = 1 # postive sample for this class
 
-                # Loss function, TODO, consider to decode before loss?, self.decode_before_loss = False 
                 # Calculate regression loss and heading loss, this is the first time prediction result been used
                 
                 # print(f"reg_targets = {reg_targets}")
@@ -532,13 +593,23 @@ class BevAnk3DHead(nn.Module):
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
             
             # Assign negative sample in labels
-            if len(neg_inds) > 0: labels[neg_inds, :] = 0 # Negatvie sample
+            if len(neg_inds) > 0: labels[neg_inds, :] = 0 # Negative sample
+            # 
+            if len(ign_inds) > 0: labels[ign_inds, :] = -1 # Ignore sample
 
+            # 
+
+            # print(cls_pred.mean())
+            # print(f"Number of (pos, neg) in cls_pred = {(torch.numel(cls_pred[ cls_pred > 0 ]), torch.numel(cls_pred[ cls_pred < 0 ]))}")
+            # print(f"Mean of positive = {cls_pred[ cls_pred > 0 ].mean()}")
             # Classification Loss
+            # print(f"self.cls_loss(cls_pred, labels).sum() = {self.cls_loss(cls_pred, labels).sum()}")
+            # print(f"(len(pos_inds) + len(neg_inds)) = {(len(pos_inds) + len(neg_inds))}")
+            
             cls_loss.append(self.cls_loss(cls_pred, labels).sum() / (len(pos_inds) + len(neg_inds)))
             # print(f"labels.shape = {labels.shape}") # [9332, 1]
-            unique, counts = np.unique(labels.cpu().numpy(), return_counts=True)
-            anchor_assign = dict(zip(unique, counts)) # {0.0: 9308, 1.0: 24}
+            # unique, counts = np.unique(labels.cpu().numpy(), return_counts=True)
+            # anchor_assign = dict(zip(unique, counts)) # {0.0: 9308, 1.0: 24}
 
 
         # print(f"cls_loss.shape = {len(cls_loss)}") # [8, ..]
@@ -547,9 +618,6 @@ class BevAnk3DHead(nn.Module):
         # Get classify loss and regression loss
         cls_loss = torch.stack(cls_loss).mean(dim=0, keepdim=True)
         reg_loss = torch.stack(reg_loss, dim=0) #[B, 12]
-
-
-
         
         # Weighted regression loss by number of ground true in each image
         n_gts = [torch.sum(annotations[j, :, 4] >= 0) for j in range(annotations.shape[0])]
@@ -559,9 +627,10 @@ class BevAnk3DHead(nn.Module):
         
         # reg_targets: [dx, dy, dw, dh, cdx, cdy, cdz, cd_sin, cd_cos, w, h, l]
         l = weighted_regression_losses.detach().cpu().numpy()
-        print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
-        print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
-        print(f"cls_loss, reg_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0])}")
+        # print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
+        # print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
+        # print(f"cls_loss, reg_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0])}")
+        
         return dict(cls_loss = cls_loss, 
                     reg_loss = reg_loss, 
                     total_loss = cls_loss + reg_loss)

@@ -9,10 +9,10 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 30,
-    disp_iter = 10,
-    save_iter = 5,
-    test_iter = 5,
+    max_epochs = 10,
+    disp_iter = 999,
+    save_iter = 999,
+    test_iter = 10,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -78,14 +78,14 @@ cfg.scheduler = scheduler
 
 ## data
 data = edict(
-    batch_size = 8, # 8
+    batch_size = 1, # 8
     num_workers = 8, #  8
     rgb_shape = (288, 1280, 3),
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'val_all.txt'),
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
     use_right_image = False,
     max_occlusion = 2,
     min_z         = 3,

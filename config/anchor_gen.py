@@ -9,9 +9,9 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 300,
-    disp_iter = 10,
-    save_iter = 10,
+    max_epochs = 10,
+    disp_iter = 999,
+    save_iter = 999,
     test_iter = 10,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
@@ -78,7 +78,7 @@ cfg.scheduler = scheduler
 
 ## data
 data = edict(
-    batch_size = 8, # 8
+    batch_size = 1, # 8
     num_workers = 8, #  8
     rgb_shape = (288, 1280, 3),
     train_dataset = "KittiMonoDataset",
@@ -87,8 +87,8 @@ data = edict(
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
     val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
     use_right_image = False,
-    max_occlusion = 999, # disable filting object
-    min_z        = -999,
+    max_occlusion = 2, # 999, # disable filting object
+    min_z        =  3, # -999,
 )
 
 data.augmentation = edict(
@@ -134,13 +134,13 @@ head_loss = edict(
     L1_regression_alpha = 5 ** 2,
     focal_loss_gamma = 2.0,
     match_low_quality=False,
-    balance_weight   = [20.0],
+    balance_weight   = [80.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
 )
 head_test = edict(
-    score_thr = 0.75, # TODO, 0.75
+    score_thr = 0.5, # TODO, 0.75
     cls_agnostic = False,
-    nms_iou_thr = 0.5, # TODO, 0.5, 1.0 means disable NMS
+    nms_iou_thr = 1.0, # TODO, 0.5, 1.0 means disable NMS
     post_optimization = False, # TODO, True
 )
 
