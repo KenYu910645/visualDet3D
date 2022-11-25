@@ -557,10 +557,9 @@ class BevAnk3DHead(nn.Module):
                 # anchor_assignment[ anchor_assignment < 0 ] = -1
 
             # Get index of postive and negative anchor
-            pos_inds = torch.nonzero(anchor_assignment >= 0, as_tuple=False).squeeze()
-            neg_inds = torch.nonzero(anchor_assignment ==-1, as_tuple=False).squeeze()
-            ign_inds = torch.nonzero(anchor_assignment ==-2, as_tuple=False).squeeze()
-            
+            pos_inds = torch.nonzero(anchor_assignment >= 0, as_tuple=False).squeeze(dim=1)
+            neg_inds = torch.nonzero(anchor_assignment ==-1, as_tuple=False).squeeze(dim=1)
+            ign_inds = torch.nonzero(anchor_assignment ==-2, as_tuple=False).squeeze(dim=1)
             #
             n_pos = pos_inds.shape[0]
             n_neg = neg_inds.shape[0]
