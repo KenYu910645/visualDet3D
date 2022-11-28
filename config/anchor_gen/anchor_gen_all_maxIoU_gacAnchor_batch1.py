@@ -9,10 +9,10 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 30,
+    max_epochs = 8,
     disp_iter = 1,
-    save_iter = 5,
-    test_iter = 5,
+    save_iter = 1,
+    test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -78,7 +78,7 @@ cfg.scheduler = scheduler
 
 ## data
 data = edict(
-    batch_size = 8, # 8
+    batch_size = 1, # 8
     num_workers = 8, #  8
     rgb_shape = (288, 1280, 3),
     train_dataset = "KittiMonoDataset",
@@ -136,8 +136,8 @@ head_loss = edict(
     match_low_quality=False,
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
-    anchor_assignment = 'L1distance', # 'L1distance', '3Ddistance'
-    anchor_generation = 'bev_anchor', # 'gac_anchor'
+    anchor_assignment = 'maxIoU', # 'maxIoU', 'L1distance', '3Ddistance'
+    anchor_generation = 'gac_anchor', # 'gac_anchor' 'bev_anchor'
 )
 head_test = edict(
     score_thr = 0.5, # TODO, 0.75

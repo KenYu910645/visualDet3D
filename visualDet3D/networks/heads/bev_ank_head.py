@@ -425,7 +425,7 @@ class BevAnk3DHead(nn.Module):
         max_score = max_score[high_score_mask]
         label     = label[high_score_mask]
 
-        # Decode reg_pred(delta) by using anchor's gemetry
+        # Decode reg_pred(delta) by using anchor's geometry
         bboxes = self._decode(anchor_det, reg_pred, hdg_pred)
 
         # Clip 2d bbox's boundary if exceed image.shape, TODO, I disable clipper temply 
@@ -448,7 +448,7 @@ class BevAnk3DHead(nn.Module):
         label     = label    [keep_inds]
         # print(f"bboxes after nms = {bboxes.shape}") # [1355, 11]
         
-        print(f"Number of detection = {bboxes.shape[0]}")
+        # print(f"Number of detection = {bboxes.shape[0]}")
         # Post Optimization
         if is_post_opt:
             max_score, bboxes, label = self._post_process(max_score, bboxes, label, P2s)
