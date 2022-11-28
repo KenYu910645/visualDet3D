@@ -114,7 +114,13 @@ def evaluate_kitti_obj(cfg:EasyDict,
         gpu=min(cfg.trainer.gpu, torch.cuda.device_count() - 1),
         dataset_type=getattr(cfg, "dataset_type", "kitti"),
     )
-    
+
+    eval_lines = result_texts[0].splitlines()
+    bev_result = [float(i) for i in eval_lines[2].split(':')[1].split(',')]
+    # print(bev_result) # [6.13, 7.09, 8.24]
+    threeD_result = [float(i) for i in eval_lines[3].split(':')[1].split(',')]
+    # print(threeD_result) # [6.13, 7.09, 8.23]
+
     # I think this is bad because current classes is weird 
     # result_texts = evaluate(
     #     label_path=os.path.join(cfg.path.data_path, 'label_2'),
@@ -125,10 +131,15 @@ def evaluate_kitti_obj(cfg:EasyDict,
     #     dataset_type=getattr(cfg, "dataset_type", "kitti"),
     # )
 
-
-
     for class_index, result_text in enumerate(result_texts):
         if writer is not None:
+            # Add by spderkiller, visulize validation set performance
+            writer.add_scalar('val/bev_easy', bev_result[0], epoch_num)
+            writer.add_scalar('val/bev_mid',  bev_result[1], epoch_num)
+            writer.add_scalar('val/bev_hard', bev_result[2], epoch_num)
+            writer.add_scalar('val/3d_easy',  threeD_result[0], epoch_num)
+            writer.add_scalar('val/3d_mid',   threeD_result[1], epoch_num)
+            writer.add_scalar('val/3d_hard',  threeD_result[2], epoch_num)
             writer.add_text("validation result {}".format(class_index), result_text.replace(' ', '&nbsp;').replace('\n', '  \n'), epoch_num + 1)
         print(result_text)
 
