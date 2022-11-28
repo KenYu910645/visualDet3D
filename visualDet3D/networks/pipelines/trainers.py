@@ -46,9 +46,9 @@ def train_mono_detection(data, module:nn.Module,
     if  cfg.detector.loss.iou_type == 'iou' or\
         cfg.detector.loss.iou_type == 'ciou' or\
         cfg.detector.loss.iou_type == 'diou':
-        loss = loss_dict['cls_loss'].mean() + loss_dict['reg_loss'].mean() + loss_dict['iou_loss'].mean()
+        loss = loss_dict['1/cls_loss'].mean() + loss_dict['1/reg_loss'].mean() + loss_dict['1/iou_loss'].mean()
     else:
-        loss = loss_dict['cls_loss'].mean() + loss_dict['reg_loss'].mean()
+        loss = loss_dict['1/cls_loss'].mean() + loss_dict['1/reg_loss'].mean()
     
     if bool(loss.item() == 0):
         return

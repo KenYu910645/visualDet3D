@@ -9,10 +9,10 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 10,
-    disp_iter = 999,
+    max_epochs = 30,
+    disp_iter = 1,
     save_iter = 999,
-    test_iter = 10,
+    test_iter = 5,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/gac_original' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/anchor_gen' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 # path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
 
 if not os.path.isdir(path.project_path):
@@ -84,8 +84,8 @@ data = edict(
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_100.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_100.txt'),
     use_right_image = False,
     max_occlusion = 2,
     min_z         = 3,

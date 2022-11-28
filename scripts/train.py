@@ -5,15 +5,9 @@ import matplotlib
 matplotlib.use('agg') 
 
 import os
-import sys
-import numpy as np
 from easydict import EasyDict
-from tqdm import tqdm
 from fire import Fire
-import coloredlogs
-import logging
 import torch
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from _path_init import *
@@ -48,17 +42,21 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     is_evaluating  = local_rank <= 0
 
     ## Setup writer if local_rank > 0
-    recorder_dir = os.path.join(cfg.path.log_path, experiment_name + f"config={config}")
+    # recorder_dir = os.path.join(cfg.path.log_path, experiment_name + f"config={config}")
+    recorder_dir = os.path.join(cfg.path.log_path, experiment_name)
+    print(f"is_logging = {is_logging}") # True
+
     if is_logging: # writer exists only if not distributed and local rank is smaller
         ## Clean up the dir if it exists before
         if os.path.isdir(recorder_dir):
             os.system("rm -r {}".format(recorder_dir))
             print("clean up the recorder directory of {}".format(recorder_dir))
+        
         writer = SummaryWriter(recorder_dir)
+        # writer.add_custom_scalars(layout)
 
         ## Record config object using pprint
         import pprint
-
         formatted_cfg = pprint.pformat(cfg)
         writer.add_text("config.py", formatted_cfg.replace(' ', '&nbsp;').replace('\n', '  \n')) # add space for markdown style in tensorboard text
     else:
@@ -172,11 +170,11 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
 
             if is_logging and global_step % cfg.trainer.disp_iter == 0:
                 ## Log loss, print out and write to tensorboard in main process
-                if 'total_loss' not in training_loss_logger.loss_stats:
+                if '1/total_loss' not in training_loss_logger.loss_stats:
                     print(f"\nIn epoch {epoch_num}, iteration:{iter_num}, global_step:{global_step}, total_loss not found in logger.")
                 else:
                     log_str = 'Epoch: {} | Iteration: {}  | Running loss: {:1.5f} | eta:{}'.format(
-                        epoch_num, iter_num, training_loss_logger.loss_stats['total_loss'].avg,
+                        epoch_num, iter_num, training_loss_logger.loss_stats['1/total_loss'].avg,
                         timer.compute_eta(global_step, len(dataloader_train) * cfg.trainer.max_epochs))
                     print(log_str, end='\r')
                     writer.add_text("training_log/train", log_str, global_step)

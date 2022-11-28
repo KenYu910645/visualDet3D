@@ -20,12 +20,16 @@ class LossLogger():
         for key in loss_dict:
             if key not in self.loss_stats:
                 self.loss_stats[key] = AverageMeter()
-            self.loss_stats[key].update(loss_dict[key].mean().item())
+            try:
+                self.loss_stats[key].update(loss_dict[key].mean().item())
+            except:
+                self.loss_stats[key].update(loss_dict[key])
     
     def log(self, step):
         for key in self.loss_stats:
-            name = key + '/' + self.data_split
-            self.recorder.add_scalar(name, self.loss_stats[key].avg, step)
+            # name = key + '/' + self.data_split
+            # name = self.data_split + '/' + key 
+            self.recorder.add_scalar(key, self.loss_stats[key].avg, step)
 
 def convertAlpha2Rot(alpha, cx, P2):
     cx_p2 = P2[..., 0, 2]

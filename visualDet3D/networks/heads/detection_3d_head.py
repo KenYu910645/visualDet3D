@@ -617,7 +617,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             #
             n_pos = pos_inds.shape[0]
             n_neg = neg_inds.shape[0]
-            print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078)
+            # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078)
 
             if len(pos_inds) > 0:
                 pos_assigned_gt_label = bbox_annotation[sampling_result_dict['pos_assigned_gt_inds'], 4].long()
@@ -690,13 +690,13 @@ class AnchorBasedDetection3DHead(nn.Module):
             if len(neg_inds) > 0:
                 labels[neg_inds, :] = 0
             
-            print(f"cls_score.mean() = {cls_score.mean()}")
-            print(f"means of  positive = {cls_score[ cls_score > 0 ].mean()}")
-            # print(f"Min of  positive = {cls_score[ cls_score > 0 ]}")
-            print(f"Number of positive in cls_pred = {torch.numel(cls_score[ cls_score > 0 ])}")
-            print(f"Number of negative in cls_pred = {torch.numel(cls_score[ cls_score < 0 ])}")
-            print(f"self.cls_loss(cls_pred, labels).sum() = {self.loss_cls(cls_score, labels).sum()}")
-            print(f"(len(pos_inds) + len(neg_inds)) = {(len(pos_inds) + len(neg_inds))}")
+            # print(f"cls_score.mean() = {cls_score.mean()}")
+            # print(f"means of  positive = {cls_score[ cls_score > 0 ].mean()}")
+            # # print(f"Min of  positive = {cls_score[ cls_score > 0 ]}")
+            # print(f"Number of positive in cls_pred = {torch.numel(cls_score[ cls_score > 0 ])}")
+            # print(f"Number of negative in cls_pred = {torch.numel(cls_score[ cls_score < 0 ])}")
+            # print(f"self.cls_loss(cls_pred, labels).sum() = {self.loss_cls(cls_score, labels).sum()}")
+            # print(f"(len(pos_inds) + len(neg_inds)) = {(len(pos_inds) + len(neg_inds))}")
             
             # Get classification loss
             cls_loss.append(self.loss_cls(cls_score, labels).sum() / (len(pos_inds) + len(neg_inds)))
@@ -715,14 +715,44 @@ class AnchorBasedDetection3DHead(nn.Module):
         iou_loss = weighted_iou_losses.mean(dim=0, keepdim=True)
         
         l = weighted_regression_losses.detach().cpu().numpy()
-        print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
-        print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
-        print(f"cls_loss, reg_loss, iou_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0], iou_loss.detach().cpu().numpy()[0])}")
+        # print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
+        # print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
+        # print(f"cls_loss, reg_loss, iou_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0], iou_loss.detach().cpu().numpy()[0])}")
         
-        return dict(cls_loss=cls_loss,
-                    reg_loss=reg_loss,
-                    iou_loss=iou_loss,
-                    total_loss=cls_loss + reg_loss + iou_loss)
+        # return dict(cls_loss=cls_loss,
+        #             reg_loss=reg_loss,
+        #             iou_loss=iou_loss,
+        #             total_loss=cls_loss + reg_loss + iou_loss)
+        log_dict = {}
+        log_dict['1/cls_loss'] = cls_loss
+        log_dict['1/reg_loss'] = reg_loss
+        log_dict['1/total_loss'] = cls_loss + reg_loss
+        log_dict['2/dx']     = weighted_regression_losses[0]
+        log_dict['2/dy']     = weighted_regression_losses[1]
+        log_dict['2/dw']     = weighted_regression_losses[2]
+        log_dict['2/dh']     = weighted_regression_losses[3]
+        log_dict['2/cdx']    = weighted_regression_losses[4]
+        log_dict['2/cdy']    = weighted_regression_losses[5]
+        log_dict['2/cdz']    = weighted_regression_losses[6]
+        log_dict['4/d_sin']  = weighted_regression_losses[7]
+        log_dict['4/d_cos']  = weighted_regression_losses[8]
+        log_dict['4/dw']     = weighted_regression_losses[9]
+        log_dict['4/dh']     = weighted_regression_losses[10]
+        log_dict['4/dl']     = weighted_regression_losses[11]
+        log_dict['4/d_hdg']  = weighted_regression_losses[12]
+        log_dict['3/n_positive_anchor'] = torch.tensor([n_pos])
+        log_dict['3/n_negative_anchor'] = torch.tensor([n_neg])
+        # log_dict['3/n_ignored_anchor']  = torch.tensor([n_ign])
+        log_dict['3/n_positive_predict'] = torch.numel(cls_score[ cls_score >  0 ])
+        log_dict['3/n_negative_predict'] = torch.numel(cls_score[ cls_score <= 0 ])
+        log_dict['3/mean_positive_predict'] = cls_score[ cls_score >  0 ].mean()
+        log_dict['3/mean_negative_predict'] = cls_score[ cls_score <= 0 ].mean()
+
+        return log_dict
+
+
+
+
 
 class StereoHead(AnchorBasedDetection3DHead):
     def init_layers(self, num_features_in,
