@@ -111,7 +111,7 @@ class BevAnk3DHead(nn.Module):
                 GAC_head_anchor_2D = anchor_dict['anchors'][0, :, :].detach().cpu().numpy()
                 GAC_head_anchor_3D = anchor_dict['anchor_mean_std_3d'][:, 0, :, :].detach().cpu().numpy()
                 GAC_head_anchor_mask = anchor_dict['mask'][0, :].detach().cpu().numpy()
-                
+            
             # Filter via GAC_head_anchor_mask
             GAC_head_anchor_2D = GAC_head_anchor_2D[ GAC_head_anchor_mask ]
             GAC_head_anchor_3D = GAC_head_anchor_3D[ GAC_head_anchor_mask ]
@@ -158,7 +158,8 @@ class BevAnk3DHead(nn.Module):
             # Get anchor distribution 
             # self.anchor_distribution = torch.full((18, 80), 32)
             self.anchor_mask = GAC_head_anchor_mask
-
+        else:
+            assert False, f"Can't find anchor generation method: {self.anchor_generation_method}"
         ####################################################################
         # Make sure they have the same number of anchors
         assert self.n_anchor == int(torch.count_nonzero(torch.tensor(self.anchor_mask))), f"Anchor bboxes and anchor distribution have different number of anchor! {self.n_anchor} != {int(torch.count_nonzero(torch.tensor(self.anchor_mask)))}"
@@ -594,7 +595,8 @@ class BevAnk3DHead(nn.Module):
 
                 ign_inds = torch.nonzero(anchor_assignment ==-2, as_tuple=False).squeeze(dim=1)
                 n_ign = ign_inds.shape[0]
-
+            else:
+                assert False, f"Can't find anchor assignment method: {self.anchor_assignment_method}"
             # # Get index of postive and negative anchor
             pos_inds = torch.nonzero(anchor_assignment >= 0, as_tuple=False).squeeze(dim=1)
             neg_inds = torch.nonzero(anchor_assignment ==-1, as_tuple=False).squeeze(dim=1)

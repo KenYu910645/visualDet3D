@@ -69,10 +69,15 @@ def evaluate_kitti_obj(cfg:EasyDict,
                        dataset_val:Sized,
                        writer:SummaryWriter,
                        epoch_num:int,
-                       result_path_split='validation'
+                       result_path_split='validation',
+                       given_result_path=None,
                        ):
     model.eval()
-    result_path = os.path.join(cfg.path.preprocessed_path, result_path_split, 'data')
+    
+    if given_result_path != None:
+        result_path = given_result_path
+    else:
+        result_path = os.path.join(cfg.path.preprocessed_path, result_path_split, 'data')
     
     # comment this block if want to disable rebuilding experiment
     if os.path.isdir(result_path):

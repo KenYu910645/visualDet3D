@@ -12,8 +12,8 @@
 # ./launchers/eval.sh config/nuscene_kitti.py 0 /home/lab530/KenYu/visualDet3D/exp_output/nuscene_kitti/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
 
 # Evaluation on testing set
-# ./launchers/det_precompute.sh config/my_config.py test
-# ./launchers/eval.sh config/my_config.py 0 /home/lab530/KenYu/visualDet3D/my_exp/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth test
+./launchers/det_precompute.sh config/my_config.py test
+./launchers/eval.sh config/my_config.py 0 /home/lab530/KenYu/visualDet3D/my_exp/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth test
 
 # ./launchers/det_precompute.sh config/gac_original.py train
-./launchers/train.sh config/gac_original.py 0 gac_original
+# ./launchers/train.sh config/gac_original.py 0 gac_original

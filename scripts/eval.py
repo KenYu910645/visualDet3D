@@ -52,7 +52,7 @@ def main(config:str="config/config.py",
         raise KeyError("evluate_func not found in Config")
 
     # Run evaluation
-    evaluate_detection(cfg, detector, dataset, None, 0, result_path_split=split_to_test)
+    evaluate_detection(cfg, detector, dataset, None, 0, result_path_split=split_to_test, given_result_path = '/home/lab530/KenYu/visualDet3D/my_pred/')
     print('finish')
 if __name__ == '__main__':
     fire.Fire(main)

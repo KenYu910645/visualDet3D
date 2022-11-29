@@ -9,10 +9,10 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 30,
+    max_epochs = 100, # 30,
     disp_iter = 1,
-    save_iter = 999,
-    test_iter = 1,
+    save_iter = 10,
+    test_iter = 10,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -78,14 +78,14 @@ cfg.scheduler = scheduler
 
 ## data
 data = edict(
-    batch_size = 1, # 8
+    batch_size = 8, # 8
     num_workers = 8, #  8
     rgb_shape = (288, 1280, 3),
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_88.txt'),
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_100.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_100.txt'),
     use_right_image = False,
     max_occlusion = 2, # 999, # disable filting object
     min_z        =  3, # -999,
@@ -136,13 +136,13 @@ head_loss = edict(
     match_low_quality=False,
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
-    anchor_assignment = '3Ddistance', # 'L1distance', '3Ddistance'
-    anchor_generation = 'bev_anchor', # 'gac_anchor'
+    anchor_assignment = 'maxIoU', # 'maxIoU', 'L1distance', '3Ddistance'
+    anchor_generation = 'gac_anchor', # 'bev_anchor' 'gac_anchor'
 )
 head_test = edict(
     score_thr = 0.5, # TODO, 0.75
     cls_agnostic = False,
-    nms_iou_thr = 1.0, # TODO, 0.5, 1.0 means disable NMS
+    nms_iou_thr = 0.5, # TODO, 0.5, 1.0 means disable NMS
     post_optimization = False, # TODO, True
 )
 
