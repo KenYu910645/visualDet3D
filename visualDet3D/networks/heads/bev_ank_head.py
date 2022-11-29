@@ -17,6 +17,9 @@ DEVICE = torch.device("cuda:0") # TODO
 ANCHOR_BBOX_PATH   = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchors.pkl"
 ANCHOR_DISTRI_PATH = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchor_map.pkl"
 
+ANCHOR_DENSE_BBOX_PATH   = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchors_bev_dense.pkl"
+ANCHOR_DENSE_DISTRI_PATH = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchor_bev_dense_map.pkl"
+
 P2_tf = np.array([[ 7.55646755e+02, 0.00000000e+00, 6.38374831e+02, 4.69778060e+01],
                   [ 0.00000000e+00, 7.55646755e+02, 7.62980073e+01, -6.09610124e-02],
                   [ 0.00000000e+00, 0.00000000e+00, 1.00000000e+00, 2.74588400e-03]])
@@ -105,6 +108,19 @@ class BevAnk3DHead(nn.Module):
                 self.anchor_mask = pickle.load(f)
             print(f"Load anchor_mask.pkl from {ANCHOR_DISTRI_PATH}")
         
+        elif self.anchor_generation_method == "bev_dense_anchor":
+            # Load anchor's bbox 
+            with open(ANCHOR_DENSE_BBOX_PATH, 'rb') as f:
+                self.anchors = pickle.load(f).to(DEVICE)
+            print(f"Load anchors.pkl from {ANCHOR_DENSE_BBOX_PATH}")
+            self.n_anchor = self.anchors.shape[0] # Number of anchor
+            # print(f"self.anchors = {self.anchors.shape}") # [14284, 12]
+
+            # Load anchor_mask.pkl
+            with open(ANCHOR_DENSE_DISTRI_PATH, 'rb') as f:
+                self.anchor_mask = pickle.load(f)
+            print(f"Load anchor_mask.pkl from {ANCHOR_DENSE_DISTRI_PATH}")
+
         elif self.anchor_generation_method == 'gac_anchor':
             with open("/home/lab530/KenYu/visualDet3D/GAC_original_all_anchor.pkl", 'rb') as f:
                 anchor_dict = pickle.load(f)
