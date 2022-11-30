@@ -1,14 +1,21 @@
-./launchers/det_precompute.sh config/iou/baseline.py train
-./launchers/train.sh config/iou/baseline.py 1 baseline
+# ./launchers/det_precompute.sh config/anchor_gen.py train # test
+# ./launchers/eval.sh config/anchor_gen.py 1 /home/lab530/KenYu/visualDet3D/exp_output/anchor_gen/Mono3D/checkpoint/BevAnkYolo3D_49.pth validation
 
+# ./launchers/det_precompute.sh config/anchor_gen.py train
+# ./launchers/train.sh config/anchor_gen.py 1 anchor_gen
 
-# EXP_NAME=('baseline' 'iou' 'ciou')
+# EXP_NAME=('anchor_gen_all_3Ddistance_bevAnchor_batch8' 'anchor_gen_all_L1distance_bevAnchor_batch1' 'anchor_gen_all_L1distance_bevAnchor_batch8' 'anchor_gen_all_maxIoU_gacAnchor_batch1' 'anchor_gen_all_maxIoU_gacAnchor_batch8')
 
-# for exp_name in "${EXP_NAME[@]}"
-# do
-#     ./launchers/det_precompute.sh config/iou/"$exp_name".py train
-#     ./launchers/train.sh config/iou/"$exp_name".py 1 "$exp_name" > exp_output/iou/"$exp_name"/screen_output.txt
-# done
+EXP_NAME=('anchor_gen_all_gac_original' 'anchor_gen_dense_all_occluded_object' 'anchor_gen_dense_all_occluded_object')
+
+for exp_name in "${EXP_NAME[@]}"
+do
+    ./launchers/det_precompute.sh config/anchor_gen/"$exp_name".py train
+    ./launchers/train.sh config/anchor_gen/"$exp_name".py 1 "$exp_name"
+done
+
+# ./launchers/det_precompute.sh config/anchor_gen/anchor_gen_dense_all.py train
+# ./launchers/train.sh config/anchor_gen/anchor_gen_dense_all.py 1 anchor_gen_dense_all
 
 # NMS
 # ./launchers/det_precompute.sh config/nms_test/nms_0.py train
@@ -42,6 +49,14 @@
 # ./launchers/det_precompute.sh config/anchor_gen.py train # test
 # ./launchers/eval.sh config/anchor_gen.py 0 /home/lab530/KenYu/visualDet3D/exp_output/anchor_gen/Mono3D/checkpoint/BevAnkYolo3D_latest.pth validation
 # python ../ml_toolkit/3d_object_detection_visualization/viz3Dbox.py
+
+# ./launchers/det_precompute.sh config/anchor_gen.py train # test
+# PTH_NAME=('BevAnkYolo3D_49.pth' 'BevAnkYolo3D_99.pth' 'BevAnkYolo3D_149.pth' 'BevAnkYolo3D_199.pth' 'BevAnkYolo3D_249.pth' 'BevAnkYolo3D_299.pth' 'BevAnkYolo3D_349.pth' 'BevAnkYolo3D_399.pth' 'BevAnkYolo3D_449.pth')
+# for pth_name in "${PTH_NAME[@]}"
+# do
+#     ./launchers/eval.sh config/anchor_gen.py 1 /home/lab530/KenYu/visualDet3D/exp_output/anchor_gen/Mono3D/checkpoint/"$pth_name" validation > exp_output/anchor_gen/eval_val_result_"$pth_name".txt
+# done
+
 
 # Test one 
 # ./launchers/det_precompute.sh config/anchor_gen.py test

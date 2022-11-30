@@ -12,8 +12,8 @@
 # ./launchers/eval.sh config/nuscene_kitti.py 0 /home/lab530/KenYu/visualDet3D/exp_output/nuscene_kitti/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
 
 # Evaluation on testing set
-./launchers/det_precompute.sh config/my_config.py test
-./launchers/eval.sh config/my_config.py 0 /home/lab530/KenYu/visualDet3D/my_exp/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth test
+./launchers/det_precompute.sh config/anchor_gen/anchor_gen_all_L1distance_bevAnchor_batch8.py train
+./launchers/eval.sh config/anchor_gen/anchor_gen_all_L1distance_bevAnchor_batch8.py 0 /home/lab530/KenYu/visualDet3D/exp_output/anchor_gen_all/Mono3D/checkpoint/BevAnk_L1distance_batch8_bev_ank_latest.pth validation
 
 # ./launchers/det_precompute.sh config/gac_original.py train
 # ./launchers/train.sh config/gac_original.py 0 gac_original

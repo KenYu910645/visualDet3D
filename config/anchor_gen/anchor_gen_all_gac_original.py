@@ -85,10 +85,10 @@ data = edict(
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'val_all.txt'),
     use_right_image = False,
-    max_occlusion = 2, # 999, # disable filting object
-    min_z        =  3, # -999,
+    max_occlusion = 2,
+    min_z         = 3,
 )
 
 data.augmentation = edict(
@@ -117,7 +117,7 @@ cfg.data = data
 detector = edict()
 detector.obj_types = cfg.obj_types
 detector.exp = cfg.exp
-detector.name = 'BevAnkYolo3D' # 'BevAnkYolo3D' # 'GroundAwareYolo3D'
+detector.name = 'GroundAwareYolo3D' # 'BevAnkYolo3D' # 'GroundAwareYolo3D'
 detector.backbone = edict(
     depth=101,
     pretrained=True,
@@ -136,13 +136,11 @@ head_loss = edict(
     match_low_quality=False,
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
-    anchor_assignment = 'L1distance', # 'maxIoU', 'L1distance', '3Ddistance'
-    anchor_generation = 'bev_anchor', # 'gac_anchor'
 )
 head_test = edict(
-    score_thr = 0.5, # TODO, 0.75
+    score_thr=0.5, # TODO, 0.75
     cls_agnostic = False,
-    nms_iou_thr = 0.5, # TODO, 0.5, 1.0 means disable NMS
+    nms_iou_thr=0.5, # TODO  , 0.5, bigger -> striker
     post_optimization = False, # TODO, True
 )
 

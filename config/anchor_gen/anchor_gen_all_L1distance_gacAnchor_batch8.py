@@ -85,7 +85,7 @@ data = edict(
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'val_all.txt'),
     use_right_image = False,
     max_occlusion = 2, # 999, # disable filting object
     min_z        =  3, # -999,
@@ -137,7 +137,7 @@ head_loss = edict(
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
     anchor_assignment = 'L1distance', # 'maxIoU', 'L1distance', '3Ddistance'
-    anchor_generation = 'bev_anchor', # 'gac_anchor'
+    anchor_generation = 'gac_anchor', # 'gac_anchor' 'bev_anchor'
 )
 head_test = edict(
     score_thr = 0.5, # TODO, 0.75
