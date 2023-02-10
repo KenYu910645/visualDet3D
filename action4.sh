@@ -1,11 +1,21 @@
-# EXP_NAME=('score_0_5' 'score_0_9')
-# EXP_NAME=('score_0_nms_0')
+EXP_NAME=('cbam_only_spatial')
 
-# for exp_name in "${EXP_NAME[@]}"
-# do
-#     ./launchers/det_precompute.sh config/score_test/"$exp_name".py train
-#     ./launchers/train.sh config/score_test/"$exp_name".py 1 "$exp_name" > exp_output/score_test/"$exp_name"/screen_output.txt
-# done
+for exp_name in "${EXP_NAME[@]}"
+do
+    ./launchers/det_precompute.sh config/attention/"$exp_name".py train
+    ./launchers/train.sh config/attention/"$exp_name".py 1 "$exp_name"
+done
+
+# ./launchers/det_precompute.sh config/fpn_3d/fpn_2d_pretrain.py train
+# ./launchers/train.sh config/fpn_3d/fpn_2d_pretrain.py 0 fpn_2d_pretrain
+
+# ./launchers/det_precompute.sh config/fpn_3d/baseline_pixelwise_anchor_hack.py train
+# ./launchers/train.sh config/fpn_3d/baseline_pixelwise_anchor_hack.py 0 baseline_pixelwise_anchor_hack
+
+# ./launchers/det_precompute.sh config/anchor_gen/gac_original.py train
+# ./launchers/train.sh config/anchor_gen/gac_original.py 0 gac_original
+
+# ./launchers/train.sh config/anchor_gen/gac_original.py 0 fpn_3d_gac_original
 
 # NMS
 # ./launchers/det_precompute.sh config/nms_test/nms_0.py train
@@ -37,8 +47,8 @@
 # ./launchers/det_precompute.sh config/anchor_gen.py train
 # ./launchers/train.sh config/anchor_gen.py 0 anchor_gen 
 
-./launchers/det_precompute.sh config/gac_original.py train
-./launchers/train.sh config/gac_original.py 0 gac_original
+# ./launchers/det_precompute.sh config/gac_original.py train
+# ./launchers/train.sh config/gac_original.py 0 gac_original
 
 # Evaluation on validation set
 # ./launchers/det_precompute.sh config/anchor_gen.py train # test

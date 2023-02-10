@@ -69,6 +69,17 @@ class Bottleneck(nn.Module):
         self.stride = stride
 
     def forward(self, x):
+        '''
+            (1): Bottleneck(
+            (conv1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (relu): ReLU(inplace=True)
+            ) 
+        '''
         residual = x
 
         out = self.conv1(x)
@@ -89,8 +100,6 @@ class Bottleneck(nn.Module):
         out = self.relu(out)
 
         return out
-
-
 
 class ResNet(nn.Module):
     planes = [64, 128, 256, 512]
@@ -197,12 +206,23 @@ class ResNet(nn.Module):
         x = self.relu(x)
         if -1 in self.out_indices:
             outs.append(x)
-        x = self.maxpool(x) 
+        x = self.maxpool(x)
+        
+        # print(f"self.num_stages = {self.num_stages}") # self.num_stages = 3
         for i in range(self.num_stages):
             layer = getattr(self, f"layer{i+1}")
             x = layer(x)
             if i in self.out_indices:
                 outs.append(x)
+            # print(f"x = {x.shape}")
+            # Resnet34
+            # x = torch.Size([8, 64, 72, 320])
+            # x = torch.Size([8, 128, 36, 160])
+            # x = torch.Size([8, 256, 18, 80])
+            # ResNet50
+            # x = torch.Size([8, 256, 72, 320])
+            # x = torch.Size([8, 512, 36, 160])
+            # x = torch.Size([8, 1024, 18, 80])
         return outs
 
 

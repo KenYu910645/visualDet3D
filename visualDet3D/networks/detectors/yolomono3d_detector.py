@@ -3,8 +3,10 @@ import torch.nn as nn
 import torch
 from visualDet3D.networks.utils import DETECTOR_DICT
 from visualDet3D.networks.detectors.yolomono3d_core import YoloMono3DCore
-from visualDet3D.networks.heads.detection_3d_head import GroundAwareHead
+from visualDet3D.networks.heads.detection_3d_head import GroundAwareHead, CzHead
+from visualDet3D.networks.heads.retinanet_3d_head import RetinaNet3DHead_BevAnk, RetinaNet3DHead_GACAnk
 from visualDet3D.networks.heads.bev_ank_head import BevAnk3DHead
+from visualDet3D.networks.detectors.retinanet_2d import RetinaNet3DCore
 
 @DETECTOR_DICT.register_module
 class Yolo3D(nn.Module):
@@ -24,6 +26,8 @@ class Yolo3D(nn.Module):
 
         self.network_cfg = network_cfg
 
+        self.is_writen_anchor_file = False
+
     def build_core(self, network_cfg):
         self.core = YoloMono3DCore(network_cfg.backbone)
 
@@ -42,10 +46,10 @@ class Yolo3D(nn.Module):
             cls_loss, reg_loss: tensor of losses
             loss_dict: [key, value] pair for logging
         """
-        
+        # print(f"P2 = {P2}") [8, 3, 4] 
         # print(f"img_batch.shape = {img_batch.shape}") # [8, 3, 288, 1280]
         features  = self.core(dict(image=img_batch, P2=P2)) # [8, 1024, 18, 80]
-       
+        
         # For Experiment C
         if self.exp == "C":
             # print(f"features.shape = {features.shape}")
@@ -56,21 +60,46 @@ class Yolo3D(nn.Module):
 
         cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch)) # [8, 46080, 2], [8, 46080, 12] 
         anchors = self.bbox_head.get_anchor(img_batch, P2)
+         
+        # if self.network_cfg.is_fpn_debug:
+        #     cls_preds = cls_preds[:, 184320:230400, :]
+        #     reg_preds = reg_preds[:, 184320:230400, :]
+        #     anchors['anchors'] = anchors['anchors'][:, 184320:230400, :]
+        #     anchors['mask'] = anchors['mask'][:, 184320:230400]
+        #     anchors['anchor_mean_std_3d'] = anchors['anchor_mean_std_3d'][184320:230400, :, :, :]
+            
+        #     # print(f"cls_preds = {cls_preds.shape}") # torch.Size([8, 246080, 2])
+        #     # print(f"reg_preds = {reg_preds.shape}") # reg_preds = torch.Size([8, 246080, 12])
+        #     # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
+        #     # print(f"anchors['mask'] = {anchors['mask'].shape}") # [1, 46080]
+        #     # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2]
 
-        # import pickle
-        # import random
-        # with open(f"GAC_original_all_anchor_{int(100*random.random())}.pkl", 'wb') as f:
-        #     pickle.dump(anchors, f)
-        #     print("Write to pkl")
-
-        # 
+        
+        # Output Anchor to file
+        if (not self.is_writen_anchor_file) and self.network_cfg.head.data_cfg.is_overwrite_anchor_file:
+            import pickle
+            with open(f"{self.network_cfg.head.data_cfg.anchor_mean_std_path}_anchor.pkl", 'wb') as f:
+                pickle.dump(anchors, f)
+                print(f"Save to {self.network_cfg.head.data_cfg.anchor_mean_std_path}_anchor.pkl")
+            self.is_writen_anchor_file = True
+        
+        # print(f"[anchor.py] anchor means = {anchors_z.mean()}") # torch.Size([1, 46080])
         # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
-        # print(f"anchors['mask'] = {anchors['mask'].shape}") # [8, 46080]
+        # print(f"anchors['mask'] = {anchors['mask'].shape}") # [1, 46080]
         # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2], z, sin(\t), cos(\t)
-
-        # cls_loss, reg_loss, loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
-        # return cls_loss, reg_loss, loss_dict
+        # print(f"valid anchor = {torch.count_nonzero(anchors['mask'])}") # 3860
         # 
+        if self.network_cfg.head.is_two_stage:
+            cz_preds = self.cz_head(dict(features=features, 
+                                    P2=P2, 
+                                    image=img_batch,
+                                    cls_preds=cls_preds,
+                                    reg_preds=reg_preds,
+                                    anchors=anchors,
+                                    annotations=annotations,))
+            # TODO append cz result to reg_result
+            # Flatten Anchor
+        
         loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
         return loss_dict
 
@@ -120,10 +149,17 @@ class Yolo3D(nn.Module):
 
         cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2))
 
-        anchors = self.bbox_head.get_anchor(img_batch, P2) # This is same for every picture
+        anchors = self.bbox_head.get_anchor(img_batch, P2)
         # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
         # print(f"anchors['mask'] = {anchors['mask'].shape}") # [1, 46080]
         # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2]
+
+        # if self.network_cfg.is_fpn_debug:
+        #     cls_preds = cls_preds[:, 184320:230400, :]
+        #     reg_preds = reg_preds[:, 184320:230400, :]
+        #     anchors['anchors'] = anchors['anchors'][:, 184320:230400, :]
+        #     anchors['mask'] = anchors['mask'][:, 184320:230400]
+        #     anchors['anchor_mean_std_3d'] = anchors['anchor_mean_std_3d'][184320:230400, :, :, :]
 
         scores, bboxes, cls_indexes = self.bbox_head.get_bboxes(cls_preds, reg_preds, anchors, P2, img_batch)
         # print(f"scores = {scores.shape}") # torch.Size([5]) # [number of detection], confident score
@@ -149,6 +185,10 @@ class GroundAwareYolo3D(Yolo3D):
         self.bbox_head = GroundAwareHead(
             **(network_cfg.head)
         )
+        if network_cfg.head.is_two_stage:
+            self.cz_head = CzHead(
+                **(network_cfg.head)
+        )
 
 # Add to register BevAnkYolo3D
 @DETECTOR_DICT.register_module
@@ -159,3 +199,24 @@ class BevAnkYolo3D(Yolo3D):
         self.bbox_head = BevAnk3DHead(
             **(network_cfg.head)
         )
+
+# Add to register RetinaNet3DHead_BevAnk
+@DETECTOR_DICT.register_module
+class RetinaNet3D_BevAnk(Yolo3D):
+    def build_head(self, network_cfg): # Use RetinaNet3DHead or GroundAwareHead
+        self.bbox_head = RetinaNet3DHead_BevAnk(
+            **(network_cfg.head)
+        )
+    def build_core(self, network_cfg):
+        self.core = RetinaNet3DCore(network_cfg.backbone,
+                                    network_cfg.neck)
+
+@DETECTOR_DICT.register_module
+class RetinaNet3D_GACAnk(Yolo3D):
+    def build_head(self, network_cfg):
+        self.bbox_head = RetinaNet3DHead_GACAnk(
+            **(network_cfg.head)
+        )
+    def build_core(self, network_cfg):
+        self.core = RetinaNet3DCore(network_cfg.backbone,
+                                    network_cfg.neck)

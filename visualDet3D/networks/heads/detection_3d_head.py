@@ -12,6 +12,7 @@ from visualDet3D.networks.lib.blocks import AnchorFlatten, ConvBnReLU
 from visualDet3D.networks.backbones.resnet import BasicBlock
 from visualDet3D.networks.lib.ops import ModulatedDeformConvPack
 from visualDet3D.networks.lib.look_ground import LookGround
+from visualDet3D.networks.lib.cbam import CBAM
 
 class AnchorBasedDetection3DHead(nn.Module):
     def __init__(self, num_features_in:int=1024,
@@ -24,7 +25,12 @@ class AnchorBasedDetection3DHead(nn.Module):
                        test_cfg:EasyDict=EasyDict(),
                        read_precompute_anchor:bool=True,
                        exp:str='',
-                       data_cfg:EasyDict=EasyDict(),):
+                       data_cfg:EasyDict=EasyDict(),
+                       is_fpn_debug:bool=False,
+                       use_channel_attention:bool=False,
+                       use_spatial_attention:bool=False,
+                       is_two_stage:bool=False,
+                       is_seperate_cz:bool=False):
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
         
@@ -33,12 +39,25 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.decode_before_loss = getattr(loss_cfg, 'decode_before_loss', False)
         self.loss_cfg = loss_cfg
         self.test_cfg  = test_cfg
+        self.data_cfg = data_cfg
         self.build_loss(**loss_cfg)
         self.backprojector = BackProjection()
         self.clipper = ClipBoxes()
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
         self.exp = exp
         print(f"iou_type = {self.loss_cfg.iou_type}")
+        self.layer_cfg = layer_cfg
+        self.is_fpn_debug = is_fpn_debug
+        self.use_channel_attention = use_channel_attention
+        self.use_spatial_attention = use_spatial_attention
+        self.is_two_stage = is_two_stage
+        self.is_seperate_cz = is_seperate_cz
+        
+        print(f"self.is_fpn_debug = {self.is_fpn_debug}")
+        print(f"self.use_channel_attention = {self.use_channel_attention}")
+        print(f"self.use_spatial_attention = {self.use_spatial_attention}")
+        print(f"self.is_two_stage = {self.is_two_stage}")
+        print(f"self.is_seperate_cz = {self.is_seperate_cz}")
 
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -229,33 +248,32 @@ class AnchorBasedDetection3DHead(nn.Module):
                                      0  1   2   3    4          5   6    7   8  9  10, 11
             
             selected_anchors_3d - [N_P, 6, 2]
-                3D geometry of anchors, [..., 0] is mean value, [..., 0] is std
+                3D geometry of anchors, [..., 0] is mean value, [..., 1] is std
                 [cz, sin(alpha*2), cos(alpha*2), w, h , l]
                 
         '''
 
-        # how to transform lable.txt to this(x1, y1, x2, y2)???
         sampled_anchors = sampled_anchors.float()
         sampled_gt_bboxes = sampled_gt_bboxes.float()
         px = (sampled_anchors[..., 0] + sampled_anchors[..., 2]) * 0.5
         py = (sampled_anchors[..., 1] + sampled_anchors[..., 3]) * 0.5
-        pw = sampled_anchors[..., 2] - sampled_anchors[..., 0]
-        ph = sampled_anchors[..., 3] - sampled_anchors[..., 1]
+        pw =  sampled_anchors[..., 2] - sampled_anchors[..., 0]
+        ph =  sampled_anchors[..., 3] - sampled_anchors[..., 1]
 
         # ground true 2D bounding box center = (gx, gy)
         gx = (sampled_gt_bboxes[..., 0] + sampled_gt_bboxes[..., 2]) * 0.5
         gy = (sampled_gt_bboxes[..., 1] + sampled_gt_bboxes[..., 3]) * 0.5
-        gw = sampled_gt_bboxes[..., 2] - sampled_gt_bboxes[..., 0]
-        gh = sampled_gt_bboxes[..., 3] - sampled_gt_bboxes[..., 1]
+        gw =  sampled_gt_bboxes[..., 2] - sampled_gt_bboxes[..., 0]
+        gh =  sampled_gt_bboxes[..., 3] - sampled_gt_bboxes[..., 1]
 
         # diff of 2D bbox's center and geometry 
-        targets_dx = (gx - px) / pw
+        targets_dx = (gx - px) / pw # TODO, YOLO says it's unstable to train
         targets_dy = (gy - py) / ph
         targets_dw = torch.log(gw / pw)
         targets_dh = torch.log(gh / ph)
 
-        # 3D bbox center on image plane
-        targets_cdx = (sampled_gt_bboxes[:, 5] - px) / pw
+        # 3D bbox center on image plane, # TODO because gac_original use 2d boudning box as feature location
+        targets_cdx = (sampled_gt_bboxes[:, 5] - px) / pw # TODO we should use cx, cy prior
         targets_cdy = (sampled_gt_bboxes[:, 6] - py) / ph
 
         # 3D bbox center's depth
@@ -270,7 +288,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         targets_h3d = (sampled_gt_bboxes[:, 9]  - selected_anchors_3d[:, 4, 0]) / selected_anchors_3d[:, 4, 1]
         targets_l3d = (sampled_gt_bboxes[:, 10] - selected_anchors_3d[:, 5, 0]) / selected_anchors_3d[:, 5, 1]
 
-        # This targets mean network should be able to predict the value in it
+        # This target values are the values that the network going to predict
         targets = torch.stack((targets_dx, targets_dy, targets_dw, targets_dh, 
                          targets_cdx, targets_cdy, targets_cdz,
                          targets_cd_sin, targets_cd_cos,
@@ -414,7 +432,8 @@ class AnchorBasedDetection3DHead(nn.Module):
         is_filtering = getattr(self.loss_cfg, 'filter_anchor', True)
         if not self.training:
             is_filtering = getattr(self.test_cfg, 'filter_anchor', is_filtering)
-
+        # print(f"[detection_3d_head.py] is_filtering = {is_filtering}")
+        
         anchors, useful_mask, anchor_mean_std = self.anchors(img_batch, P2, is_filtering=is_filtering)
         return_dict=dict(
             anchors=anchors, #[1, N, 4]
@@ -527,14 +546,13 @@ class AnchorBasedDetection3DHead(nn.Module):
         if is_post_opt:
             max_score, bboxes, label = self._post_process(max_score, bboxes, label, P2s)
 
-        print(f"Number of detection = {bboxes.shape[0]}")
+        # print(f"Number of detection = {bboxes.shape[0]}")
         return max_score, bboxes, label
 
     def loss(self, cls_scores, reg_preds, anchors, annotations, P2s):
         # cls_scores and reg_preds are predicted by netowrk 
-        # anchors is constant, every loop are the same
         # annotataions are ground trues
-
+        # print(f"anchors = {anchors['anchors'].shape}") # torch.Size([1, 46080, 4])
         batch_size = cls_scores.shape[0]
 
         anchor = anchors['anchors'][0] #[N, 4]
@@ -568,6 +586,9 @@ class AnchorBasedDetection3DHead(nn.Module):
                 number_of_positives.append(0)
                 continue
             
+            # Filter 46080 anchors to 18974 anchors
+            # print(f"Filter {anchor.shape[0]} anchors to {anchor_j.shape[0]} anchors")
+
             # print(f"anchor_j.shape = {anchor_j.shape}") # [7548, 4]
             # print(f"bbox_annotation.shape = {bbox_annotation.shape}") # [A, 12], where A is how many postive gts does this image have 
 
@@ -617,7 +638,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             #
             n_pos = pos_inds.shape[0]
             n_neg = neg_inds.shape[0]
-            # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078)
+            # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078) n_pos, n_neg = (40, 3720)
 
             if len(pos_inds) > 0:
                 pos_assigned_gt_label = bbox_annotation[sampling_result_dict['pos_assigned_gt_inds'], 4].long()
@@ -676,7 +697,7 @@ class AnchorBasedDetection3DHead(nn.Module):
                     # Get IOU loss 
                     # print(f"pos_gt_bboxes[:, :4] = {pos_gt_bboxes[:, :4].shape}")
                     pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
-                    pos_target_decoded, _        = self._decode(pos_anchor, pos_bbox_targets,  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
+                    pos_target_decoded, _        = self._decode(pos_anchor, pos_bbox_targets,    anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
                     # print(f"pos_prediction_decoded[:, :4] = {pos_prediction_decoded[mask, :4]}")
                     # print(f"pos_target_decoded[:, :4] = {pos_target_decoded[mask, :4]}")
                     loss_iou_j = self.loss_iou(pos_prediction_decoded[mask, :4], pos_target_decoded[mask, :4])
@@ -750,10 +771,6 @@ class AnchorBasedDetection3DHead(nn.Module):
 
         return log_dict
 
-
-
-
-
 class StereoHead(AnchorBasedDetection3DHead):
     def init_layers(self, num_features_in,
                           num_anchors:int,
@@ -797,34 +814,81 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                           cls_feature_size:int=1024,
                           reg_feature_size:int=1024,
                           **kwargs):
+        
+        if self.use_spatial_attention or self.use_channel_attention:
+            self.cbam_layer = CBAM(num_features_in, 
+                                    reduction_ratio = 16, 
+                                    pool_types = ['avg', 'max'], 
+                                    use_spatial = self.use_spatial_attention, 
+                                    use_channel = self.use_channel_attention)
+            print(self.cbam_layer)
+        
         self.cls_feature_extraction = nn.Sequential(
             nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
             nn.Dropout2d(0.3),
+            
             nn.ReLU(inplace=True),
             nn.Conv2d(cls_feature_size, cls_feature_size, kernel_size=3, padding=1),
             nn.Dropout2d(0.3),
+            
             nn.ReLU(inplace=True),
-
-            nn.Conv2d(cls_feature_size, num_anchors*(num_cls_output), kernel_size=3, padding=1),
+            nn.Conv2d(cls_feature_size, num_anchors*num_cls_output, kernel_size=3, padding=1),
+            
             AnchorFlatten(num_cls_output)
         )
         self.cls_feature_extraction[-2].weight.data.fill_(0)
         self.cls_feature_extraction[-2].bias.data.fill_(0)
 
         print(f"GroundAwareHead  self.exp = {self.exp}")
-        if self.exp == "NA_NLG": # Without LookGround
+        if self.exp == "no_look_ground": # Without LookGround
+            assert  self.is_seperate_cz == False, "Haven't implement no_look_ground and seperate cz functino"
             self.reg_feature_extraction = nn.Sequential(
                 nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
                 nn.BatchNorm2d(reg_feature_size),
                 nn.ReLU(),
+                
                 nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
                 nn.BatchNorm2d(reg_feature_size),
                 nn.ReLU(inplace=True),
+                
                 nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
+                
                 AnchorFlatten(num_reg_output)
             )
+            self.reg_feature_extraction[-2].weight.data.fill_(0)
+            self.reg_feature_extraction[-2].bias.data.fill_(0)
         else:
-            self.reg_feature_extraction = nn.Sequential(
+            if self.is_seperate_cz:
+                self.reg_feature_extraction = nn.Sequential(
+                    LookGround(num_features_in, self.exp),
+                    nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                    nn.BatchNorm2d(reg_feature_size),
+                    nn.ReLU(),
+                    nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                    nn.BatchNorm2d(reg_feature_size),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(reg_feature_size, num_anchors*(num_reg_output-1), kernel_size=3, padding=1),
+                    # AnchorFlatten((num_reg_output-1))
+                )
+                self.reg_feature_extraction[-1].weight.data.fill_(0)
+                self.reg_feature_extraction[-1].bias.data.fill_(0)
+            else:
+                self.reg_feature_extraction = nn.Sequential(
+                    LookGround(num_features_in, self.exp),
+                    nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                    nn.BatchNorm2d(reg_feature_size),
+                    nn.ReLU(),
+                    nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                    nn.BatchNorm2d(reg_feature_size),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
+                    AnchorFlatten(num_reg_output)
+                )
+                self.reg_feature_extraction[-2].weight.data.fill_(0)
+                self.reg_feature_extraction[-2].bias.data.fill_(0)
+        
+        if self.is_seperate_cz:
+            self.cz_extraction = nn.Sequential(
                 LookGround(num_features_in, self.exp),
                 nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
                 nn.BatchNorm2d(reg_feature_size),
@@ -832,17 +896,188 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                 nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
                 nn.BatchNorm2d(reg_feature_size),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-                AnchorFlatten(num_reg_output)
+                nn.Conv2d(reg_feature_size, num_anchors*1, kernel_size=3, padding=1),
+                # AnchorFlatten(1)
             )
+            self.cz_extraction[-1].weight.data.fill_(0)
+            self.cz_extraction[-1].bias.data.fill_(0)
         
-        self.reg_feature_extraction[-2].weight.data.fill_(0)
-        self.reg_feature_extraction[-2].bias.data.fill_(0)
-
     def forward(self, inputs):
+        
+        if self.use_spatial_attention or self.use_channel_attention:
+            inputs['features'] = self.cbam_layer(inputs['features'])
+        
         cls_preds = self.cls_feature_extraction(inputs['features'])
-        if self.exp == "NA_NLG":
+        if self.exp == "no_look_ground":
             reg_preds = self.reg_feature_extraction(inputs['features'])
         else:
             reg_preds = self.reg_feature_extraction(inputs)
+            
+        # Concatenate !
+        if self.is_seperate_cz:
+            cz_preds = self.cz_extraction(inputs)
+            # print(f"cz_preds = {cz_preds.shape}") # torch.Size([8, 32, 18, 80])
+            # print(f"reg_preds = {reg_preds.shape}") # torch.Size([8, 352, 18, 80])
+            
+            reg_preds_new = reg_preds.view(reg_preds.shape[0], self.layer_cfg.num_anchors, -1, reg_preds.shape[2], reg_preds.shape[3])
+            cz_preds_new  = torch.unsqueeze(cz_preds, 2)
+            
+            # print(f"reg_preds_new = {reg_preds_new.shape}") # torch.Size([8, 32, 11, 18, 80])
+            # print(f"cz_preds_new = {cz_preds_new.shape}") #  torch.Size([8, 32, 1, 18, 80])
+            # [dx, dy, dw, dh, cdx, cdy, cdz, cd_sin, cd_cos, w3d, h3d, l3d]
+            #  0   1   2   3   4    5    6    7       8       9    10   11
+            all_reg_preds = torch.cat([reg_preds_new[:, :, :6 , :, :], cz_preds_new , reg_preds_new[:, :, 6: , :, :]], dim=2)
+            # print(f"all_reg_preds = {all_reg_preds.shape}") # torch.Size([8, 32, 12, 18, 80])
+            
+            reg_preds = all_reg_preds.view(all_reg_preds.shape[0], -1, all_reg_preds.shape[3], all_reg_preds.shape[4])
+            # print(f"reg_preds = {reg_preds.shape}") # torch.Size([8, 384, 18, 80])
+            # reg_preds_new = torch.tensor_split(reg_preds, 32, dim=1)
+            reg_preds = reg_preds.permute(0, 2, 3, 1)
+            reg_preds = reg_preds.contiguous().view(reg_preds.shape[0], -1, 12)
+            # print(f"reg_preds = {reg_preds.shape}")
+        
+            # print(f"reg_preds_new = {len(reg_preds_new)}") # 32
+            # print(f"reg_preds_new = {reg_preds_new[0].shape}") # torch.Size([8, 11, 18, 80])
         return cls_preds, reg_preds
+
+class CzHead(AnchorBasedDetection3DHead):
+    def init_layers(self, num_features_in,
+                          num_anchors:int,
+                          num_cls_output:int,
+                          num_reg_output:int,
+                          cls_feature_size:int=1024,
+                          reg_feature_size:int=1024,
+                          **kwargs):
+        
+        # TODO 256 should become a hyperparameter
+        # TODO try MLP, try more convolution layer
+        # TODO try injection other regressed value
+        self.conv_layer_256 = nn.Sequential(
+            nn.Conv2d(num_features_in, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+        self.depth_regressor = nn.Sequential(
+            nn.Linear(18*80*256, 1, bias=True)
+        )
+        
+    def forward(self, inputs):
+        features    = inputs['features']
+        P2          = inputs['P2']
+        image       = inputs['image']
+        cls_preds   = inputs['cls_preds']
+        reg_preds   = inputs['reg_preds']
+        anchors     = inputs['anchors']
+        annotations = inputs['annotations']
+        
+        
+        features_256 = self.conv_layer_256(features)
+        print(f"features_256 = {features_256.shape}") #  torch.Size([8, 256, 18, 80])
+        
+        # Step1: Get (cx, cy)
+        # Use cx, cy to crop features
+        # Linear layer regressor
+        # Return [B, 18, 80, 1] -> should be the same as cls_preds
+
+
+        # This is from loss()
+        anchor             = anchors['anchors'][0] #[N, 4]
+        anchor_mean_std_3d = anchors['anchor_mean_std_3d']
+        for j in range(cls_preds.shape[0]):
+            reg_pred    = reg_preds[j]
+            cls_score   = cls_preds[j][..., 0:self.num_classes]
+            alpha_score = cls_preds[j][..., self.num_classes:self.num_classes+1]
+
+            # selected by mask
+            useful_mask = anchors['mask'][j] #[N]
+            anchor_j    = anchor[useful_mask]
+            anchor_mean_std_3d_j = anchor_mean_std_3d[useful_mask]
+            reg_pred    = reg_pred[useful_mask]
+            cls_score   = cls_score[useful_mask]
+            alpha_score = alpha_score[useful_mask]
+
+            # only select useful bbox_annotations
+            bbox_annotation = annotations[j, :, :]
+            bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]#[k]
+
+            if len(bbox_annotation) == 0: continue
+            
+            # This is like retinanet's and YOLO's MaxIouAssignerm 
+            assignement_result_dict = self._assign(anchor_j, bbox_annotation, **self.loss_cfg) # doesn't involve prediction
+            
+            # This is for checking GAC's anchors miss rate
+            unique, counts = np.unique(assignement_result_dict['assigned_gt_inds'].cpu().numpy(), return_counts=True)
+            anchor_assign = dict(zip(unique, counts)) # {-1: 100, 0: 3720, 1: 40}
+
+            # I think this sample function does nothing
+            sampling_result_dict    = self._sample(assignement_result_dict, anchor_j, bbox_annotation) # doesn't involve prediction
+            num_valid_anchors = anchor_j.shape[0]
+            labels = anchor_j.new_full((num_valid_anchors, self.num_classes),
+                                    -1, # -1 not computed, binary for each class
+                                    dtype=torch.float)
+
+            pos_inds = sampling_result_dict['pos_inds']
+            neg_inds = sampling_result_dict['neg_inds']
+            #
+            n_pos = pos_inds.shape[0]
+            n_neg = neg_inds.shape[0]
+            # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078) n_pos, n_neg = (40, 3720)
+
+            if len(pos_inds) > 0:
+                pos_assigned_gt_label = bbox_annotation[sampling_result_dict['pos_assigned_gt_inds'], 4].long()
+                
+                selected_mask, selected_anchor_3d = self._get_anchor_3d(
+                    sampling_result_dict['pos_bboxes'],
+                    anchor_mean_std_3d_j[pos_inds],
+                    pos_assigned_gt_label,
+                )
+                if len(selected_anchor_3d) > 0:
+                    pos_inds = pos_inds[selected_mask]
+                    pos_bboxes    = sampling_result_dict['pos_bboxes'][selected_mask]
+                    pos_gt_bboxes = sampling_result_dict['pos_gt_bboxes'][selected_mask] # pos_gt_bbox is the corresspondent target for that entry of postive bbox
+                    pos_assigned_gt = sampling_result_dict['pos_assigned_gt_inds'][selected_mask]
+                
+                    pos_bbox_targets, targets_alpha_cls = self._encode(
+                        pos_bboxes, pos_gt_bboxes, selected_anchor_3d
+                    ) #[N, 12], [N, 1]
+                    label_index = pos_assigned_gt_label[selected_mask]
+                    labels[pos_inds, :] = 0
+                    labels[pos_inds, label_index] = 1
+
+                    pos_anchor      = anchor[pos_inds]
+                    pos_alpha_score = alpha_score[pos_inds]
+
+                    # Get IOU loss 
+                    pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
+                    pos_target_decoded, _        = self._decode(pos_anchor, pos_bbox_targets,    anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
+                    # print(f"pos_prediction_decoded[:, :4] = {pos_prediction_decoded[mask, :4]}")
+                    # print(f"pos_target_decoded[:, :4] = {pos_target_decoded[mask, :4]}")
+                    # [x1, y1, x2, y2, cx, cy, cz, w, h, l, alpha]
+                    
+                    # cx_j = pos_prediction_decoded[mask, 4] # cx
+                    # cy_j = pos_prediction_decoded[mask, 5] # cy
+                    # print(f"cx_j = {cx_j.shape}")
+                    # print(f"cy_j = {cy_j.shape}")
+                    cxy_j = pos_prediction_decoded[mask, 4:6] # cx, cy
+                    print(f"cxy_j = {cxy_j.shape}") # torch.Size([220, 2])
+                    cx_f_idx = torch.floor(cxy_j[:, 0] / 16).type(torch.int32)
+                    cy_f_idx = torch.floor(cxy_j[:, 1] / 16).type(torch.int32)
+                    
+                    # print(f"features_256 = {features_256.shape}") #  torch.Size([8, 256, 18, 80])
+                    BANDWIDTH = 5
+                    offset = int(BANDWIDTH - 1 // 2) # 2
+                    
+                    for k in range(cxy_j.shape[0]): # TODO out of bound have unexpceted dimension
+                        stripe = features_256[j, :, cy_f_idx[k]-offset:cy_f_idx[k]+offset, :]
+                        column = features_256[j, :, :                                       , 
+                                                    cx_f_idx[k]-offset:cx_f_idx[k]+offset]
+                        print(f"stripe = {stripe.shape}")
+                        print(f"column = {column.shape}")
+                        
+                    # print(cx_f_idx)
+                    # cz_j = pos_prediction_decoded[mask, 6] # cz
+                    
+                    # features_256
+                    # self.depth_regressor()
+                    # Flatten
+

@@ -1,3 +1,17 @@
+'''
+all_anchors = (61520, 4)
+
+bbox AP:49.74, 37.39, 27.80
+bev  AP:6.67, 3.58, 2.99
+3d   AP:2.84, 1.62, 1.27
+aos  AP:43.61, 31.89, 23.71
+Car AP(Average Precision)@0.70, 0.50, 0.50:
+bbox AP:49.74, 37.39, 27.80
+bev  AP:25.81, 15.70, 12.63
+3d   AP:20.72, 12.06, 9.31
+aos  AP:43.61, 31.89, 23.71
+'''
+
 from easydict import EasyDict as edict
 import os 
 import numpy as np
@@ -9,10 +23,10 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 1, # 30,
+    max_epochs = 30,
     disp_iter = 1,
-    save_iter = 10,
-    test_iter = 10,
+    save_iter = 5,
+    test_iter = 5,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -25,8 +39,8 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/anchor_gen' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
-# path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/fpn_3d_tmp' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+# path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/fpn_3d/RetinaNet/fpn_2d_pretrain.pth"
 
 if not os.path.isdir(path.project_path):
     os.mkdir(path.project_path)
@@ -87,11 +101,10 @@ data = edict(
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
     val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'val_all.txt'),
     use_right_image = False,
-    max_occlusion = 2, # 2, 999, # disable filting object
-    min_z        =  3, # 3, -999,
+    max_occlusion = 2,
+    min_z         = 3,
     is_overwrite_anchor_file = False,
-    is_use_anchor_file = True, 
-    anchor_mean_std_path = "/home/lab530/KenYu/visualDet3D/anchor/max_occlusion_2",
+    is_use_anchor_file = False, # use anchor_mean_std that generate during preprocessing
 )
 
 data.augmentation = edict(
@@ -120,17 +133,31 @@ cfg.data = data
 detector = edict()
 detector.obj_types = cfg.obj_types
 detector.exp = cfg.exp
-detector.name = 'BevAnkYolo3D' # 'BevAnkYolo3D' # 'GroundAwareYolo3D'
+detector.name = 'RetinaNet3D_GACAnk' # 'BevAnkYolo3D' # 'GroundAwareYolo3D'
+# detector.backbone = edict(
+#     depth=101,
+#     pretrained=True,
+#     frozen_stages=-1,
+#     num_stages=3,
+#     out_indices=(2, ),
+#     norm_eval=False,
+#     dilations=(1, 1, 1),
+#     exp=cfg.exp,
+# )
 detector.backbone = edict(
-    depth=101,
+    depth=50,
     pretrained=True,
-    frozen_stages=-1,
-    num_stages=3,
-    out_indices=(2, ),
-    norm_eval=False,
-    dilations=(1, 1, 1),
-    exp=cfg.exp,
+    frozen_stages=1,
+    num_stages=4,
+    out_indices=(1, 2, 3), #8, 16, 32
+    norm_eval=True,
 )
+detector.neck  = edict(
+    in_channels=[512, 1024, 2048], #only use 8 16 32
+    out_channels=256,
+    num_outs=5
+)
+
 head_loss = edict(
     fg_iou_threshold = 0.5,
     bg_iou_threshold = 0.4,
@@ -139,30 +166,30 @@ head_loss = edict(
     match_low_quality=False,
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
-    anchor_assignment = 'maxIoU', # 'maxIoU', 'L1distance', '3Ddistance'
-    anchor_generation = 'gac_anchor', # 'bev_anchor' 'gac_anchor'
 )
 head_test = edict(
-    score_thr = 0.5, # TODO, 0.75
+    score_thr=0.5, # TODO, 0.75
     cls_agnostic = False,
-    nms_iou_thr = 0.5, # TODO, 0.5, 1.0 means disable NMS
+    nms_iou_thr=0.5, # TODO  , 0.5, bigger -> striker
     post_optimization = False, # TODO, True
 )
 
 anchors = edict(
         {
             'obj_types': cfg.obj_types,
-            'pyramid_levels':[4],
-            'strides': [2 ** 4],
-            'sizes' : [24],
-            'ratios': np.array([0.5, 1]),
-            'scales': np.array([2 ** (i / 4.0) for i in range(16)]),
+            'pyramid_levels':[i for i in range(3, 8)],   # [3,  4,  5,   6,   7]
+            'strides': [2 ** (i) for i in range(3, 8)],  # [8,  16, 32,  64,  128]
+            'sizes' : [4 * 2 ** i for i in range(3, 8)], # [32, 64, 128, 256, 512] # base_size
+            'ratios': np.array([0.5, 1, 2.0]),
+            'scales': np.array([2 ** (i / 3.0) for i in range(3)]), # [1, 1.26, 1,587]
+            'is_pyrimid_external_anchor': True,
+            'external_pixelwise_anchor' : "/home/lab530/KenYu/ml_toolkit/anchor_generation/gac_original_pyrimid_npy/",
         }
     )
 
 head_layer = edict(
-    num_features_in=1024,
-    num_anchors=32,
+    num_features_in=256, # 1024
+    num_anchors=8, # 32
     num_cls_output=len(cfg.obj_types)+1,
     num_reg_output=12,
     cls_feature_size=512,

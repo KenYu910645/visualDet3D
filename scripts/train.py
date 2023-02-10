@@ -101,11 +101,34 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     ## Load old model if needed
     old_checkpoint = getattr(cfg.path, 'pretrained_checkpoint', None)
     print(f"old_checkpoint = {old_checkpoint}") # None
+    
     if old_checkpoint is not None:
-        state_dict = torch.load(old_checkpoint, map_location='cpu')
-        detector.load_state_dict(state_dict)
-        # for name, param in state_dict.items():
-        #     print(name)
+        # state_dict = torch.load(old_checkpoint, map_location='cpu')
+        # detector.load_state_dict(state_dict)
+
+        print(f"Use pretrained model at {old_checkpoint}")
+        checkpoint = torch.load(old_checkpoint, map_location='cpu')
+
+        # Load partial of the pre-train model
+        pretrained_dict = checkpoint # ['model_state_dict']
+        model_dict = detector.state_dict()
+        
+        # Reference: https://discuss.pytorch.org/t/how-to-load-part-of-pre-trained-model/1113/2
+        # 1. filter out unnecessary keys
+        filtered_dict = {}
+        for k, v in pretrained_dict.items():
+            if k in model_dict:
+                filtered_dict[k] = v
+            else:
+                print(f"Filtered in pretrain weight {k}")
+        pretrained_dict = filtered_dict
+        
+        # pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+        # print(f"pretrained_dict = {pretrained_dict.keys()}")
+        # 2. overwrite entries in the existing state dict
+        model_dict.update(pretrained_dict)
+        # 3. load the new state dict
+        detector.load_state_dict(model_dict)
 
     ## Convert to cuda
     if is_distributed:
@@ -161,8 +184,8 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
         if training_loss_logger:
             training_loss_logger.reset()
         for iter_num, data in enumerate(dataloader_train):
-            training_dection(data, detector, optimizer, writer, training_loss_logger, global_step, epoch_num, cfg)
-
+            loss_dict = training_dection(data, detector, optimizer, writer, training_loss_logger, global_step, epoch_num, cfg)
+                        
             global_step += 1
 
             if is_iter_based:

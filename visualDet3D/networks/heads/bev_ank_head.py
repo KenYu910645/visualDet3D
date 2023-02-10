@@ -13,12 +13,12 @@ from visualDet3D.networks.lib.fast_utils.hill_climbing import post_opt
 from visualDet3D.networks.utils.utils import ClipBoxes
 from visualDet3D.networks.lib.look_ground import LookGround
 
-DEVICE = torch.device("cuda:0") # TODO
-ANCHOR_BBOX_PATH   = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchors.pkl"
-ANCHOR_DISTRI_PATH = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchor_map.pkl"
+import sys
+sys.path.insert(0, "/home/lab530/KenYu/ml_toolkit/kitti/")
+from util_kitti import gac_original_anchor_parser, STD_HEIGT, STD_WIDTH, STD_LENTH
+import os
 
-ANCHOR_DENSE_BBOX_PATH   = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchors_bev_dense.pkl"
-ANCHOR_DENSE_DISTRI_PATH = "/home/lab530/KenYu/ml_toolkit/anchor_generation/anchor_bev_dense_map.pkl"
+DEVICE = torch.device("cuda:0") # TODO
 
 P2_tf = np.array([[ 7.55646755e+02, 0.00000000e+00, 6.38374831e+02, 4.69778060e+01],
                   [ 0.00000000e+00, 7.55646755e+02, 7.62980073e+01, -6.09610124e-02],
@@ -61,8 +61,8 @@ class BeVAnchorFlatten(nn.Module):
         '''
         x = x.permute(0, 2, 3, 1) # [B, 18, 80, 1728]
         x = x.contiguous().view(x.shape[0], self.anchor_mask.shape[0], -1) # [B, 207360, 12] or [B, 207360, 2]
-        # TODO make sure it's row-major
-
+        # Remember to make sure the anchor is row-major
+        
         # Filter invalid anchor
         x = x[:, self.anchor_mask, :] # [B, 14260, 12] or [B, 14260, 2]
         return x
@@ -94,88 +94,36 @@ class BevAnk3DHead(nn.Module):
         print(f"anchor_assignment_method = {self.anchor_assignment_method}")
         print(f"anchor_generation_method = {self.anchor_generation_method}")
 
-        # This is for bev_ank_head
-        if self.anchor_generation_method == 'bev_anchor':
-            # Load anchor's bbox 
-            with open(ANCHOR_BBOX_PATH, 'rb') as f:
-                self.anchors = pickle.load(f).to(DEVICE)
-            print(f"Load anchors.pkl from {ANCHOR_BBOX_PATH}")
-            self.n_anchor = self.anchors.shape[0] # Number of anchor
-            # print(f"self.anchors = {self.anchors.shape}") # [14284, 12]
-
-            # Load anchor_mask.pkl
-            with open(ANCHOR_DISTRI_PATH, 'rb') as f:
-                self.anchor_mask = pickle.load(f)
-            print(f"Load anchor_mask.pkl from {ANCHOR_DISTRI_PATH}")
-        
-        elif self.anchor_generation_method == "bev_dense_anchor":
-            # Load anchor's bbox 
-            with open(ANCHOR_DENSE_BBOX_PATH, 'rb') as f:
-                self.anchors = pickle.load(f).to(DEVICE)
-            print(f"Load anchors.pkl from {ANCHOR_DENSE_BBOX_PATH}")
-            self.n_anchor = self.anchors.shape[0] # Number of anchor
-            # print(f"self.anchors = {self.anchors.shape}") # [14284, 12]
-
-            # Load anchor_mask.pkl
-            with open(ANCHOR_DENSE_DISTRI_PATH, 'rb') as f:
-                self.anchor_mask = pickle.load(f)
-            print(f"Load anchor_mask.pkl from {ANCHOR_DENSE_DISTRI_PATH}")
-
-        elif self.anchor_generation_method == 'gac_anchor':
-            with open("/home/lab530/KenYu/visualDet3D/GAC_original_all_anchor.pkl", 'rb') as f:
-                anchor_dict = pickle.load(f)
-                GAC_head_anchor_2D = anchor_dict['anchors'][0, :, :].detach().cpu().numpy()
-                GAC_head_anchor_3D = anchor_dict['anchor_mean_std_3d'][:, 0, :, :].detach().cpu().numpy()
-                GAC_head_anchor_mask = anchor_dict['mask'][0, :].detach().cpu().numpy()
-            
-            # Filter via GAC_head_anchor_mask
-            GAC_head_anchor_2D = GAC_head_anchor_2D[ GAC_head_anchor_mask ]
-            GAC_head_anchor_3D = GAC_head_anchor_3D[ GAC_head_anchor_mask ]
-            print(f"Filted to {GAC_head_anchor_2D.shape[0]} / {GAC_head_anchor_mask.shape[0]}") #  19336 / 46080
-
-            from math import atan2
+        if self.anchor_generation_method == 'gac_anchor':
+            anchor_2D, anchor_3D, self.anchor_mask, anchor_objects = gac_original_anchor_parser(f"{data_cfg.anchor_mean_std_path}_anchor.pkl", is_transform = True)
             anchors_tensor = []
-            for i in range(GAC_head_anchor_2D.shape[0]):
-                # 2D boudning box 
-                x1 = GAC_head_anchor_2D[i, 0]
-                y1 = GAC_head_anchor_2D[i, 1]
-                x2 = GAC_head_anchor_2D[i, 2]
-                y2 = GAC_head_anchor_2D[i, 3]
-
-                # 
-                cx = (GAC_head_anchor_2D[i, 2] + GAC_head_anchor_2D[i, 0]) / 2.0
-                cy = (GAC_head_anchor_2D[i, 3] + GAC_head_anchor_2D[i, 1]) / 2.0
-                cz =  GAC_head_anchor_3D[i, 0, 0]
-
-                # 3d location 
-                loc_3d = np.linalg.inv(P2_tf[:, :3]) @ np.array([[cx*cz], [cy*cz], [cz]])
-                loc_3d[1, 0] += GAC_head_anchor_3D[i, 4, 0] / 2.0
-
-                # Get observation angle: alpha
-                alpha = atan2(GAC_head_anchor_3D[i, 1, 0], GAC_head_anchor_3D[i, 2, 0]) / 2.0
-                rot_y = alpha - atan2(loc_3d[2, 0], loc_3d[0, 0]) + pi/2
-                
-                # alpha in [-pi, pi]
-                if   rot_y >  pi: rot_y -= 2*pi
-                elif rot_y < -pi: rot_y += 2*pi
-                
-                # Dimension 
-                w = GAC_head_anchor_3D[i, 3, 0]
-                h = GAC_head_anchor_3D[i, 4, 0]
-                l = GAC_head_anchor_3D[i, 5, 0]
-
-                anchors_tensor.append([x1, y1, x2, y2, 0, cx, cy, cz, w, h ,l, alpha, loc_3d[0], loc_3d[1], loc_3d[2], rot_y])
-            
+            for a in anchor_objects:
+                anchors_tensor.append([a.xmin, a.ymin, a.xmax, a.ymax, 0, a.cx, a.cy, a.cz, a.w, a.h , a.l, a.alpha, a.x3d, a.y3d, a.z3d, a.rot_y])
             self.anchors = torch.tensor(anchors_tensor).to(DEVICE)
             self.n_anchor = self.anchors.shape[0]
-            
             print(f"anchors_tensor = {self.anchors.shape}") # [19336, 16]
 
             # Get anchor distribution 
             # self.anchor_distribution = torch.full((18, 80), 32)
-            self.anchor_mask = GAC_head_anchor_mask
+            # self.anchor_mask = GAC_head_anchor_mask
+
         else:
-            assert False, f"Can't find anchor generation method: {self.anchor_generation_method}"
+            # Load anchor's bbox 
+            anchor_path = os.path.join("/home/lab530/KenYu/ml_toolkit/anchor_generation/pkl/", 
+                                       f"{self.anchor_generation_method}.pkl")
+            with open(anchor_path, 'rb') as f:
+                self.anchors = pickle.load(f).to(DEVICE)
+            print(f"Load anchors.pkl from {anchor_path}")
+            self.n_anchor = self.anchors.shape[0] # Number of anchor
+            print(f"self.anchors = {self.anchors.shape}")
+
+            # Load anchor_mask.pkl
+            anchor_map_path = os.path.join("/home/lab530/KenYu/ml_toolkit/anchor_generation/pkl/", 
+                                           f"{self.anchor_generation_method}_map.pkl")
+            with open(anchor_map_path, 'rb') as f:
+                self.anchor_mask = pickle.load(f)
+            print(f"Load anchor_mask.pkl from {anchor_map_path}")
+            
         ####################################################################
         # Make sure they have the same number of anchors
         assert self.n_anchor == int(torch.count_nonzero(torch.tensor(self.anchor_mask))), f"Anchor bboxes and anchor distribution have different number of anchor! {self.n_anchor} != {int(torch.count_nonzero(torch.tensor(self.anchor_mask)))}"
@@ -251,7 +199,6 @@ class BevAnk3DHead(nn.Module):
         '''
         This function calcuate difference between anchor and ground true -> encode into format that network should be predicting
         '''
-        # TODO: use std and means to normalize the target value 
         # gts = [x1, y1, x2, y2, cls_index, cx, cy , cz, w, h, l , alpha]
         #        0  1   2   3   4          5   6    7   8  9  10, 11
 
@@ -281,19 +228,21 @@ class BevAnk3DHead(nn.Module):
         targets_cdx = (gts[:, 5] - aks[:, 5]) / aw
         targets_cdy = (gts[:, 6] - aks[:, 6]) / ah
 
-        # 3D bbox center's depth 
-        # targets_cdz = (gts[:, 7] - selected_anchors_3d[:, 0, 0]) / selected_anchors_3d[:, 0, 1]
-        targets_cdz = gts[:, 7] - aks[:, 7]
+        # 3D bbox center's depth
+        if self.loss_cfg.is_norm_cz:
+            targets_cdz = (gts[:, 7] - aks[:, 7]) * 1292.1559425*aks[:, 7]**(-2) / ah
+        else:
+            targets_cdz = gts[:, 7] - aks[:, 7]
         
         # 3D bbox orientation, TODO, is 2x really nesseary? 
         targets_cd_sin = torch.sin(gts[:, 11] * 2) - torch.sin(aks[:, 11] * 2)
         targets_cd_cos = torch.cos(gts[:, 11] * 2) - torch.cos(aks[:, 11] * 2)
         
         # 3D bbox geometry
-        targets_w3d = gts[:, 8]  - aks[:, 8]
-        targets_h3d = gts[:, 9]  - aks[:, 9]
-        targets_l3d = gts[:, 10] - aks[:, 10]
-
+        targets_w3d = (gts[:, 8]  - aks[:, 8] ) / STD_WIDTH
+        targets_h3d = (gts[:, 9]  - aks[:, 9] ) / STD_HEIGT
+        targets_l3d = (gts[:, 10] - aks[:, 10]) / STD_LENTH
+        
         # Get target values for network to predict
         targets = torch.stack((targets_dx, targets_dy, targets_dw, targets_dh,
                                targets_cdx, targets_cdy, targets_cdz,
@@ -345,17 +294,20 @@ class BevAnk3DHead(nn.Module):
         out_cy = aks[:, 6] + pds[..., 5] * ak_h
 
         # Get z
-        out_z = aks[:, 7] + pds[..., 6]
-
+        if self.loss_cfg.is_norm_cz:
+            out_z = pds[..., 6] / (1292.1559425*aks[:, 7]**(-2) / ak_h) + aks[:, 7]
+        else:
+            out_z = aks[:, 7] + pds[..., 6]
+        
         # Get alpha
         out_sin = pds[...,7] + torch.sin(aks[:, 11] * 2)
         out_cos = pds[...,8] + torch.cos(aks[:, 11] * 2)
         out_alpha = torch.atan2(out_sin, out_cos) / 2.0
 
         # Get dimension of 3d bbox
-        out_w = pds[...,9]  + aks[:, 8]
-        out_h = pds[...,10] + aks[:, 9]
-        out_l = pds[...,11] + aks[:, 10]
+        out_w = pds[...,9]  * STD_WIDTH + aks[:, 8]
+        out_h = pds[...,10] * STD_HEIGT + aks[:, 9]
+        out_l = pds[...,11] * STD_LENTH + aks[:, 10]
 
         out_boxes = torch.stack([out_x1, out_y1, out_x2, out_y2,
                                   out_cx, out_cy, out_z,
@@ -567,7 +519,7 @@ class BevAnk3DHead(nn.Module):
                 anno_idx     = self.anchors.new_full((3, n_anno, self.n_anchor), 0)
                 norm1_tensor = self.anchors.new_full((   n_anno, self.n_anchor), 0)
 
-                for i in range(n_anno):# TODO, can this be calcuted vai tensor operation? 
+                for i in range(n_anno):# Can this be accelarated by tensor operation? 
                     anno_idx[0, i, :] = anno_j[i, 12].repeat( self.anchors.shape[0] )
                     anno_idx[1, i, :] = anno_j[i, 14].repeat( self.anchors.shape[0] )
                     anno_idx[2, i, :] = anno_j[i, 15].repeat( self.anchors.shape[0] )
@@ -579,7 +531,8 @@ class BevAnk3DHead(nn.Module):
                     # Don't use anchor that heading is in wrong direction
                     norm1_tensor[i, torch.abs(torch.cos(self.anchors[:, 15] - anno_idx[2, i, :])) < pi/4 ] = float('inf')
 
-                # TODO what if two ground true sharing one anchor: might happened in crowd scene
+                # Potential Issue: What if two ground true sharing one anchor?
+                # This might happened in crowd scene
                 _, topk_argmin = torch.topk(norm1_tensor, N_ANCHOR_ASSIGN_TO_GT, dim = 1, largest=False)
 
                 # Assign positive anchor
@@ -613,14 +566,14 @@ class BevAnk3DHead(nn.Module):
                 n_ign = ign_inds.shape[0]
             else:
                 assert False, f"Can't find anchor assignment method: {self.anchor_assignment_method}"
-            # # Get index of postive and negative anchor
+            # Get index of postive and negative anchor
             pos_inds = torch.nonzero(anchor_assignment >= 0, as_tuple=False).squeeze(dim=1)
             neg_inds = torch.nonzero(anchor_assignment ==-1, as_tuple=False).squeeze(dim=1)
             # 
             n_pos = pos_inds.shape[0]
             n_neg = neg_inds.shape[0]
             # 
-            # print(f"n_pos, n_neg, n_ign = {(n_pos, n_neg, n_ign)}") # (86, 14078)
+            # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078)
 
             if len(pos_inds) > 0:
                 
@@ -676,12 +629,6 @@ class BevAnk3DHead(nn.Module):
         weights = reg_pred.new(n_gts).unsqueeze(1) #[B, 1] - [[4]]
         weighted_regression_losses = torch.sum(weights * reg_loss / (torch.sum(weights) + 1e-6), dim=0)
         reg_loss = weighted_regression_losses.mean(dim=0, keepdim=True)
-        
-        # reg_targets: [dx, dy, dw, dh, cdx, cdy, cdz, cd_sin, cd_cos, w, h, l]
-        # l = weighted_regression_losses.detach().cpu().numpy()
-        # print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
-        # print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
-        # print(f"cls_loss, reg_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0])}")
         
         log_dict = {}
         log_dict['1/cls_loss'] = cls_loss

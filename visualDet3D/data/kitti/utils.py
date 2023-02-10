@@ -161,7 +161,13 @@ def generate_depth_from_velo(pc_velo:np.ndarray,
 
 # spiderkiller changed index to name because index serve no purpose
 def write_result_to_file(base_result_path:str, 
-                        name:str, scores, bbox_2d, bbox_3d_state_3d=None, thetas=None, obj_types=['Car', 'Pedestrian', 'Cyclist'], threshold=0.4):
+                         name:str, 
+                         scores, 
+                         bbox_2d, 
+                         bbox_3d_state_3d=None, 
+                         thetas=None, 
+                         obj_types=['Car', 'Pedestrian', 'Cyclist'], 
+                         threshold=0.4):
     """Write Kitti prediction results of one frame to a file 
 
     Args:

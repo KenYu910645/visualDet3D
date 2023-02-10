@@ -19,7 +19,7 @@ class YoloMono3DCore(nn.Module):
         
         # Experiment Settings
         if self.exp == "A":
-            x = self.coordconv(x['image']) 
+            x = self.coordconv(x['image'])
             x = self.backbone(x)
         elif self.exp == "B":
             self.grid = np.stack(self.build_tensor_grid([x['image'].shape[2], x['image'].shape[3]]), axis=0) #[2, h, w]

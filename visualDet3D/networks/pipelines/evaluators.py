@@ -80,7 +80,7 @@ def evaluate_kitti_obj(cfg:EasyDict,
         result_path = os.path.join(cfg.path.preprocessed_path, result_path_split, 'data')
     
     # comment this block if want to disable rebuilding experiment
-    if os.path.isdir(result_path):
+    if os.path.isdir(result_path): # TODO change result path there if don't want overlapping
         os.system("rm -r {}".format(result_path))
         print("clean up the recorder directory of {}".format(result_path))
     os.mkdir(result_path)
@@ -94,7 +94,7 @@ def evaluate_kitti_obj(cfg:EasyDict,
     if "is_running_test_set" in cfg and cfg["is_running_test_set"]:
         fn_list = [i.split('.')[0] for i in os.listdir(cfg.path.test_path + "/image_2/")]
         print(f"fn_list load {len(fn_list)} file names.")
-        assert len(fn_list) == len(dataset_val), 'Number of validation data are not matched, go to /home/lab530/KenYu/visualDet3D/visualDet3D/networks/pipelines/evaluators.py'
+        assert len(fn_list) == len(dataset_val), f'Number of validation data are not matched. fn_list has {len(fn_list)} files, but dataset_val has {len(dataset_val)} files'
         for index in tqdm(range(len(dataset_val))):
             test_one(cfg, index, fn_list, dataset_val, model, test_func, backprojector, projector, result_path)
         print("Finish evaluation.")
@@ -104,7 +104,7 @@ def evaluate_kitti_obj(cfg:EasyDict,
         with open(cfg.data.val_split_file, 'r') as f:
             fn_list = [i for i in f.read().splitlines()]
         print(f"fn_list loaded {len(fn_list)} lines.")
-        assert len(fn_list) == len(dataset_val), 'Number of validation data are not matched, go to /home/lab530/KenYu/visualDet3D/visualDet3D/networks/pipelines/evaluators.py'
+        assert len(fn_list) == len(dataset_val), f'Number of validation data are not matched. fn_list has {len(fn_list)} files, but dataset_val has {len(dataset_val)} files'
 
         for index in tqdm(range(len(dataset_val))):
             test_one(cfg, index, fn_list, dataset_val, model, test_func, backprojector, projector, result_path)
@@ -193,4 +193,4 @@ def test_one(cfg, index, fn_list, dataset, model, test_func, backprojector:BackP
         bbox_2d[:, 1:4:2] += cfg.data.augmentation.crop_top
         if isinstance(scores, torch.Tensor):
             scores = scores.detach().cpu().numpy()
-        write_result_to_file(result_path, index, scores, bbox_2d, obj_types=obj_names)
+        write_result_to_file(result_path, fn_list[index], scores, bbox_2d, obj_types=obj_names)

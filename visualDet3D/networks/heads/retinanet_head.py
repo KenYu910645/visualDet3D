@@ -21,10 +21,26 @@ class RetinanetHead(nn.Module):
                         target_means=[ .0,  .0,  .0,  .0],
                         anchors_cfg=dict(),
                         loss_cfg = dict(),
-                        test_cfg = dict()
+                        test_cfg = dict(),
+                        anchor_name = "",
                         ):
         super(RetinanetHead, self).__init__()
-        self.anchors = Anchors(preprocessed_path=None, readConfigFile=False, **anchors_cfg)
+        self.anchor_name = anchor_name
+        
+        if self.anchor_name == 'original':
+            self.anchors = Anchors(preprocessed_path=None, readConfigFile=False, **anchors_cfg)
+        elif self.anchor_name == 'fpn_all_feature':
+            import pickle
+            with open("/home/lab530/KenYu/ml_toolkit/anchor_generation/pkl/anchors_gac_fpn_2D.pkl", 'rb') as f:
+                self.anchors = pickle.load(f)
+                self.anchors = torch.unsqueeze(self.anchors, 0).to("cuda:0") # TODO getdevice?
+                # print(f"self.anchors = {self.anchors.shape}") # self.anchors = torch.Size([1, 27730, 4])
+        elif self.anchor_name == 'fpn_all_feature_share_weight':
+            import pickle
+            with open("/home/lab530/KenYu/ml_toolkit/anchor_generation/pkl/anchors_gac_fpn_share_weight_2D.pkl", 'rb') as f:
+                self.anchors = pickle.load(f)
+                self.anchors = torch.unsqueeze(self.anchors, 0).to("cuda:0") # TODO getdevice?
+                print(f"self.anchors = {self.anchors.shape}")
         
         self.stacked_convs = stacked_convs
         self.in_channels = in_channels
@@ -52,21 +68,88 @@ class RetinanetHead(nn.Module):
                 for i in range(len(in_channel_list))  # no norm by default
             ]
         )
+        # for self.anchor_name == "original"
         self.retina_cls = nn.Sequential(
-            nn.Conv2d(feat_channels, self.anchors.num_anchor_per_scale * num_classes, 3, padding=1),
+            nn.Conv2d(feat_channels, 9 * num_classes, 3, padding=1),
             AnchorFlatten(num_classes)
         ) # shared head
         self.retina_reg = nn.Sequential(
-            nn.Conv2d(feat_channels, self.anchors.num_anchor_per_scale * reg_output, 3, padding=1),
+            nn.Conv2d(feat_channels, 9 * reg_output, 3, padding=1),
             AnchorFlatten(reg_output)
         )
-
         cls_prior = 0.01
         self.retina_cls[0].weight.data.fill_(0)
         self.retina_cls[0].bias.data.fill_(np.log((cls_prior) / (1-cls_prior) )) # prior from retinanet/pytorch
-
         self.retina_reg[0].weight.data.fill_(0) # prior from retinanet/pytorch
         self.retina_reg[0].bias.data.fill_(0)
+        
+         # for self.anchor_name == "fpn_all_feature"
+        self.retina_cls_3 = nn.Sequential(
+            nn.Conv2d(feat_channels, 3*num_classes, 3, padding=1),
+            AnchorFlatten(num_classes))
+        self.retina_cls_4 = nn.Sequential(
+            nn.Conv2d(feat_channels, 5*num_classes, 3, padding=1),
+            AnchorFlatten(num_classes))
+        self.retina_cls_5 = nn.Sequential(
+            nn.Conv2d(feat_channels, 6*num_classes, 3, padding=1),
+            AnchorFlatten(num_classes))
+        self.retina_cls_6 = nn.Sequential(
+            nn.Conv2d(feat_channels, 7*num_classes, 3, padding=1),
+            AnchorFlatten(num_classes))
+        self.retina_cls_7 = nn.Sequential(
+            nn.Conv2d(feat_channels, 13*num_classes, 3, padding=1),
+            AnchorFlatten(num_classes))
+        self.retina_cls_nets = [self.retina_cls_3,
+                                self.retina_cls_4,
+                                self.retina_cls_5,
+                                self.retina_cls_6, 
+                                self.retina_cls_7]
+        # cz_range = {3: [40, 50, 60], # 3
+        #             4: [20, 23, 25, 30, 40], # 5 
+        #             5: [15, 17, 20, 23, 25, 30], # 6
+        #             6: [7,  9, 11, 13, 15, 17, 19], # 7
+        #             7: [3, 4, 5, 6, 7, 8 , 9, 10, 11, 12, 13, 14 ,15]} # 13
+        self.retina_reg_3 = nn.Sequential(
+            nn.Conv2d(feat_channels, 3*reg_output, 3, padding=1),
+            AnchorFlatten(reg_output))
+        self.retina_reg_4 = nn.Sequential(
+            nn.Conv2d(feat_channels, 5*reg_output, 3, padding=1),
+            AnchorFlatten(reg_output))
+        self.retina_reg_5 = nn.Sequential(
+            nn.Conv2d(feat_channels, 6*reg_output, 3, padding=1),
+            AnchorFlatten(reg_output))
+        self.retina_reg_6 = nn.Sequential(
+            nn.Conv2d(feat_channels, 7*reg_output, 3, padding=1),
+            AnchorFlatten(reg_output))
+        self.retina_reg_7 = nn.Sequential(
+            nn.Conv2d(feat_channels, 13*reg_output, 3, padding=1),
+            AnchorFlatten(reg_output))
+        self.retina_reg_nets = [self.retina_reg_3,
+                                self.retina_reg_4,
+                                self.retina_reg_5,
+                                self.retina_reg_6, 
+                                self.retina_reg_7]
+        # Init weight
+        cls_prior = 0.01
+        for net in self.retina_cls_nets:
+            net[0].weight.data.fill_(0)
+            net[0].bias.data.fill_(np.log((cls_prior) / (1-cls_prior) ))
+        for net in self.retina_reg_nets:
+            net[0].weight.data.fill_(0)
+            net[0].bias.data.fill_(0)
+            
+        # For share weight
+        self.retina_cls_share = nn.Sequential(
+            nn.Conv2d(feat_channels, 4 * num_classes, 3, padding=1),
+            AnchorFlatten(num_classes)) # shared head
+        self.retina_reg_share = nn.Sequential(
+            nn.Conv2d(feat_channels, 4 * reg_output, 3, padding=1),
+            AnchorFlatten(reg_output))
+        cls_prior = 0.01
+        self.retina_cls_share[0].weight.data.fill_(0)
+        self.retina_cls_share[0].bias.data.fill_(np.log((cls_prior) / (1-cls_prior) )) # prior from retinanet/pytorch
+        self.retina_reg_share[0].weight.data.fill_(0) # prior from retinanet/pytorch
+        self.retina_reg_share[0].bias.data.fill_(0)
 
         self.build_loss(**loss_cfg)
 
@@ -80,21 +163,43 @@ class RetinanetHead(nn.Module):
 
         cls_scores = []
         reg_preds  = []
-        for feat in feats:
+        for i_feat, feat in enumerate(feats):
             cls_feat = self.cls_conv(feat)
             reg_feat = self.reg_conv(feat)
-
-            cls_scores.append(self.retina_cls(cls_feat))
-            reg_preds.append(self.retina_reg(reg_feat))
+            
+            if self.anchor_name == "original":
+                cls_scores.append(self.retina_cls(cls_feat))
+                reg_preds.append(self.retina_reg(reg_feat))
+            elif self.anchor_name == "fpn_all_feature":
+                cls_scores.append(self.retina_cls_nets[i_feat](cls_feat))
+                reg_preds.append (self.retina_reg_nets[i_feat](reg_feat))
+            elif self.anchor_name == "fpn_all_feature_share_weight":
+                cls_scores.append(self.retina_cls_share(cls_feat))
+                reg_preds.append (self.retina_reg_share(reg_feat))
+        
+        # for i, cls_score in enumerate(cls_scores):
+        #     print(f"(i, cls_score) = {(i, cls_score.shape)}")
+        # (i, cls_score) = (0, torch.Size([8, 17280, 3]))
+        # (i, cls_score) = (1, torch.Size([8, 7200, 3]))
+        # (i, cls_score) = (2, torch.Size([8, 2160, 3]))
+        # (i, cls_score) = (3, torch.Size([8, 700, 3]))
+        # (i, cls_score) = (4, torch.Size([8, 420, 3])) # Should be 390
         
         cls_scores = torch.cat(cls_scores, dim=1) # [B, N, num_class]
         reg_preds  = torch.cat(reg_preds,  dim=1) # [B, N, 4]
 
+        # print(f"cls_scores = {cls_scores.shape}") # cls_scores = torch.Size([8, 27760, 3])
+        # print(f"reg_preds = {reg_preds.shape}") # reg_preds = torch.Size([8, 27760, 4])
         return (cls_scores, reg_preds)
 
 
     def get_anchor(self, img_batch):
-        return self.anchors(img_batch)
+        if self.anchor_name == "original":
+            return self.anchors(img_batch)
+        elif self.anchor_name == "fpn_all_feature":
+            return self.anchors
+        elif self.anchor_name == "fpn_all_feature_share_weight":
+            return self.anchors
 
     def _assign(self, anchor, annotation, 
                     bg_iou_threshold=0.0,
@@ -359,4 +464,10 @@ class RetinanetHead(nn.Module):
 
         cls_loss /= float(number_of_positives)
         reg_loss /= float(number_of_positives)
-        return cls_loss, reg_loss, dict(cls_loss=cls_loss, reg_loss=reg_loss, total_loss=cls_loss + reg_loss)
+        #
+        log_dict = {}
+        log_dict['1/cls_loss'] = cls_loss
+        log_dict['1/reg_loss'] = reg_loss
+        log_dict['1/total_loss'] = cls_loss + reg_loss
+        return log_dict
+        # return cls_loss, reg_loss, dict(cls_loss=cls_loss, reg_loss=reg_loss, total_loss=cls_loss + reg_loss)

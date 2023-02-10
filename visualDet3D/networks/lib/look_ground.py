@@ -40,9 +40,11 @@ class LookGround(nn.Module):
         )
         self.extract = nn.Conv2d(1 + input_features, input_features, 1)
         self.extract_no_dis = nn.Conv2d(input_features, input_features, 1) # For NA_NDIS
+        
         self.baseline = baseline
         self.relative_elevation = relative_elevation
         self.alpha = nn.Parameter(torch.tensor([0.0], dtype=torch.float32))
+        
         # For NA_WGAC
         self.alpha_left  = nn.Parameter(torch.tensor([0.0], dtype=torch.float32))
         self.alpha_right = nn.Parameter(torch.tensor([0.0], dtype=torch.float32))
@@ -59,7 +61,7 @@ class LookGround(nn.Module):
         P2 = inputs['P2']
         # Init self.slope
         if self.exp == "NA_WGAC" and self.slope == None:
-            self.slope = torch.zeros(18, 80, device="cuda:0")
+            self.slope = torch.zeros(18, 80, device="cuda")
             for v in range(18):
                 for u in range(80):
                     self.slope[v, u] = self.get_slope((u, v), P2[0].cpu().numpy(), (18, 80))
@@ -129,14 +131,6 @@ class LookGround(nn.Module):
             # 
             down_shifts = -self.slope_base_offset + disp_down[:, 0, :, :]
             flow_field_down = torch.stack((x_base + down_shifts, y_base + torch.mul(down_shifts, self.slope)), dim=3)
-            
-            
-            # Output visulization 
-            wgac_flows = torch.cat([left_shifts, right_shifts, up_shifts, down_shifts], dim=0)
-            print(wgac_flows.shape)
-            with open('WGAC_flow_field.pkl', 'wb') as f:
-                pickle.dump(wgac_flows, f)
-                print(f"Write WGAC_flow_field to WGAC_flow_field.pkl")
 
         # print(f"flow_field_up = {up_shifts.min()}")
         # print(f"flow_field_up = {up_shifts.max()}")
@@ -149,12 +143,12 @@ class LookGround(nn.Module):
         
         # print(f"flow_field = {flow_field.shape}") # [8, 18, 80, 2]
         # In grid_sample coordinates are assumed to be between -1 and 1
-        if self.exp == "NA_NDIS":
+        if self.exp == "no_disparity_map": # Use ground feature but not disparity map
             output = F.grid_sample(x, flow_field, mode='bilinear',
                                 padding_mode='border', align_corners=True)
             return F.relu(x + self.extract_no_dis(output) * self.alpha)
         
-        elif self.exp == "NA_NGF":
+        elif self.exp == "no_ground_feature": # Use disparity but no ground feature
             output = torch.cat([disparity.unsqueeze(1), x], dim=1) # [8, 1025, 18, 80]
             return F.relu(self.extract(output))
         

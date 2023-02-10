@@ -9,10 +9,10 @@ cfg.exp = 'baseline'
 ## trainer
 trainer = edict(
     gpu = 0,
-    max_epochs = 1, # 30,
+    max_epochs = 30, # 30,
     disp_iter = 1,
-    save_iter = 10,
-    test_iter = 10,
+    save_iter = 1,
+    test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/anchor_gen' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/anchor_gen_all' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 # path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
 
 if not os.path.isdir(path.project_path):
@@ -90,8 +90,6 @@ data = edict(
     max_occlusion = 2, # 2, 999, # disable filting object
     min_z        =  3, # 3, -999,
     is_overwrite_anchor_file = False,
-    is_use_anchor_file = True, 
-    anchor_mean_std_path = "/home/lab530/KenYu/visualDet3D/anchor/max_occlusion_2",
 )
 
 data.augmentation = edict(
@@ -140,7 +138,7 @@ head_loss = edict(
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
     anchor_assignment = 'maxIoU', # 'maxIoU', 'L1distance', '3Ddistance'
-    anchor_generation = 'gac_anchor', # 'bev_anchor' 'gac_anchor'
+    anchor_generation = 'adaptive_anchor_Yoffset', # 'bev_anchor' 'gac_anchor' 'bev_dense_anchor' 'adaptive_anchor'
 )
 head_test = edict(
     score_thr = 0.5, # TODO, 0.75
