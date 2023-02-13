@@ -13,6 +13,7 @@ from visualDet3D.networks.backbones.resnet import BasicBlock
 from visualDet3D.networks.lib.ops import ModulatedDeformConvPack
 from visualDet3D.networks.lib.look_ground import LookGround
 from visualDet3D.networks.lib.cbam import CBAM
+from visualDet3D.networks.lib.bam import BAM
 
 class AnchorBasedDetection3DHead(nn.Module):
     def __init__(self, num_features_in:int=1024,
@@ -30,7 +31,8 @@ class AnchorBasedDetection3DHead(nn.Module):
                        use_channel_attention:bool=False,
                        use_spatial_attention:bool=False,
                        is_two_stage:bool=False,
-                       is_seperate_cz:bool=False):
+                       is_seperate_cz:bool=False,
+                       use_bam:bool=False):
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
         
@@ -52,12 +54,14 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.use_spatial_attention = use_spatial_attention
         self.is_two_stage = is_two_stage
         self.is_seperate_cz = is_seperate_cz
+        self.use_bam = use_bam
         
         print(f"self.is_fpn_debug = {self.is_fpn_debug}")
         print(f"self.use_channel_attention = {self.use_channel_attention}")
         print(f"self.use_spatial_attention = {self.use_spatial_attention}")
         print(f"self.is_two_stage = {self.is_two_stage}")
         print(f"self.is_seperate_cz = {self.is_seperate_cz}")
+        print(f"self.use_bam = {self.use_bam}")
 
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -823,6 +827,10 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                                     use_channel = self.use_channel_attention)
             print(self.cbam_layer)
         
+        if self.use_bam:
+            self.bam_layer = BAM(num_features_in)
+            print(self.bam_layer)
+        
         self.cls_feature_extraction = nn.Sequential(
             nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
             nn.Dropout2d(0.3),
@@ -906,6 +914,9 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         
         if self.use_spatial_attention or self.use_channel_attention:
             inputs['features'] = self.cbam_layer(inputs['features'])
+        
+        if self.use_bam:
+            inputs['features'] = self.bam_layer(inputs['features'])
         
         cls_preds = self.cls_feature_extraction(inputs['features'])
         if self.exp == "no_look_ground":

@@ -14,9 +14,19 @@ from visualDet3D.networks.backbones import resnet
 
 class FPN(nn.Module):
     """Some Information about FPN"""
-    def __init__(self, in_channels, out_channels, num_outs):
+    def __init__(self, 
+                 in_channels, 
+                 out_channels, 
+                 num_outs,
+                 is_use_final_conv = True,
+                 is_use_latenal_connection = True):
         super(FPN, self).__init__()
         self.in_channels = in_channels # [512, 1024, 2048]
+        self.is_use_final_conv = is_use_final_conv
+        self.is_use_latenal_connection = is_use_latenal_connection
+        print(f"is_use_final_conv = {self.is_use_final_conv}")
+        print(f"is_use_latenal_connection = {self.is_use_latenal_connection}")
+        
         '''
         (lateral_convs): ModuleList(
             (0): Conv2d(512, 1024, kernel_size=(1, 1), stride=(1, 1))
@@ -24,18 +34,18 @@ class FPN(nn.Module):
             (2): Conv2d(2048, 1024, kernel_size=(1, 1), stride=(1, 1))
         )
         '''
+        # 1x1 convolution
         self.lateral_convs = nn.ModuleList(
             [
                 nn.Conv2d(in_channels[i], out_channels, 1) for i in range(len(in_channels))
             ]
         )
-        
         '''
         (fpn_convs): ModuleList(
             (0): Conv2d(1024, 1024, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             (1): Conv2d(1024, 1024, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             (2): Conv2d(1024, 1024, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            (3): Conv2d(2048, 1024, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1)) # TODO bug?
+            (3): Conv2d(2048, 1024, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
             (4): Conv2d(1024, 1024, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
         )
         '''
@@ -49,14 +59,9 @@ class FPN(nn.Module):
         if extra_levels > 0: # 2
             for i in range(extra_levels):
                 if i == 0:
-                    self.fpn_convs.append(
-                        nn.Conv2d(in_channels[-1], out_channels, 3, padding=1, stride=2)
-                        # nn.Conv2d(out_channels, out_channels, 3, padding=1, stride=2)
-                    )
+                    self.fpn_convs.append(nn.Conv2d(in_channels[-1], out_channels, 3, padding=1, stride=2))
                 else:
-                    self.fpn_convs.append(
-                        nn.Conv2d(out_channels, out_channels, 3, padding=1, stride=2)
-                    )
+                    self.fpn_convs.append(nn.Conv2d(out_channels   , out_channels, 3, padding=1, stride=2))
         # self.conv_debug_8 = nn.Conv2d(512, 1024, 3, padding=1)
         # self.conv_debug_16 = nn.Conv2d(1024, 1024, 3, padding=1)
         # self.conv_debug_32 = nn.Conv2d(2048, 1024, 3, padding=1)
@@ -73,24 +78,20 @@ class FPN(nn.Module):
         # print(f"feats[1].shape = {feats[1].shape}") # torch.Size([8, 1024, 18, 80])
         # print(f"feats[2].shape = {feats[2].shape}") # torch.Size([8, 2048, 9, 40])
 
-        # Build Laterals
-        laterals = [
-            self.lateral_convs[i](feats[i]) for i in range(len(self.in_channels))
-        ]
-        
+        # Build Laterals, 1x1 convolution
+        outs = [ self.lateral_convs[i](feats[i]) for i in range(len(self.in_channels)) ]
         # print(f"laterals[0].shape = {laterals[0].shape}") # torch.Size([8, 1024, 36, 160])
         # print(f"laterals[1].shape = {laterals[1].shape}") # torch.Size([8, 1024, 18, 80])
         # print(f"laterals[2].shape = {laterals[2].shape}") # torch.Size([8, 1024, 9, 40])
 
-        # top-down path, not your problem
-        for i in range(len(self.in_channels) - 1, 0, -1): # i = 2, 1
-            laterals[i - 1] += torch.nn.functional.interpolate(
-                laterals[i], scale_factor=2, mode='nearest'
-            )
+        # top-down path, element-wise addition
+        if self.is_use_latenal_connection:
+            for i in range(len(self.in_channels) - 1, 0, -1): # i = 2, 1
+                outs[i - 1] += torch.nn.functional.interpolate(outs[i], scale_factor=2, mode='nearest')
+        
         # build original levels
-        outs = [
-            self.fpn_convs[i](laterals[i]) for i in range(len(self.in_channels))
-        ]
+        if self.is_use_final_conv:
+            outs = [ self.fpn_convs[i](outs[i]) for i in range(len(self.in_channels)) ]
         # print(f"outs[0].shape = {outs[0].shape}") # torch.Size([8, 1024, 36, 160])
         # print(f"outs[1].shape = {outs[1].shape}") # torch.Size([8, 1024, 18, 80])
         # print(f"outs[2].shape = {outs[2].shape}") # torch.Size([8, 1024, 9, 40])
@@ -106,7 +107,7 @@ class FPN(nn.Module):
         # Add extra layer
         if len(self.fpn_convs) > len(outs):
             # RetinaNet add convolutions to inputs
-            outs.append(self.fpn_convs[len(outs)](feats[-1]))
+            outs.append( self.fpn_convs[len(outs)](feats[-1]) )
 
             for i in range(len(outs), len(self.fpn_convs)):
                 outs.append(self.fpn_convs[i](outs[-1])) # default no relu in mmdetection retinanet, with relu in pytorch/retinanet
