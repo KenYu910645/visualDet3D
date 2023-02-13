@@ -1,3 +1,17 @@
+'''
+all_anchors = (61520, 4)
+
+bbox AP:49.74, 37.39, 27.80
+bev  AP:6.67, 3.58, 2.99
+3d   AP:2.84, 1.62, 1.27
+aos  AP:43.61, 31.89, 23.71
+Car AP(Average Precision)@0.70, 0.50, 0.50:
+bbox AP:49.74, 37.39, 27.80
+bev  AP:25.81, 15.70, 12.63
+3d   AP:20.72, 12.06, 9.31
+aos  AP:43.61, 31.89, 23.71
+'''
+
 from easydict import EasyDict as edict
 import os 
 import numpy as np
@@ -11,7 +25,7 @@ trainer = edict(
     gpu = 0,
     max_epochs = 30,
     disp_iter = 1,
-    save_iter = 5,
+    save_iter = 99,
     test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
@@ -120,15 +134,14 @@ detector = edict()
 detector.obj_types = cfg.obj_types
 detector.exp = cfg.exp
 detector.name = 'RetinaNet3D_GACAnk' # 'BevAnkYolo3D' # 'GroundAwareYolo3D'
-detector.is_fpn_debug = True,
 # detector.backbone = edict(
 #     depth=101,
 #     pretrained=True,
 #     frozen_stages=-1,
-#     num_stages=4, # 3
-#     out_indices= (1, 2, 3), # (2, ),
+#     num_stages=3,
+#     out_indices=(2, ),
 #     norm_eval=False,
-#     dilations=(1, 1, 1, 1), # (1, 1, 1)
+#     dilations=(1, 1, 1),
 #     exp=cfg.exp,
 # )
 detector.backbone = edict(
@@ -141,7 +154,7 @@ detector.backbone = edict(
 )
 detector.neck  = edict(
     in_channels=[512, 1024, 2048], #only use 8 16 32
-    out_channels=256, #1024
+    out_channels=256,
     num_outs=5
 )
 
@@ -153,6 +166,7 @@ head_loss = edict(
     match_low_quality=False,
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
+    filter_anchor = False, # This prevent anchor filtering !!
 )
 head_test = edict(
     score_thr=0.5, # TODO, 0.75
@@ -169,17 +183,18 @@ anchors = edict(
             'sizes' : [4 * 2 ** i for i in range(3, 8)], # [32, 64, 128, 256, 512] # base_size
             'ratios': np.array([0.5, 1, 2.0]),
             'scales': np.array([2 ** (i / 3.0) for i in range(3)]), # [1, 1.26, 1,587]
-            'external_pixelwise_anchor' : "/home/lab530/KenYu/ml_toolkit/anchor_generation/gac_original_npy/",
+            'is_pyrimid_external_anchor': True,
+            'external_pixelwise_anchor' : "/home/lab530/KenYu/ml_toolkit/anchor_generation/gac_original_pyrimid_npy/",
         }
     )
 
 head_layer = edict(
     num_features_in=256, # 1024
-    num_anchors=32,
+    num_anchors=8, # 32
     num_cls_output=len(cfg.obj_types)+1,
     num_reg_output=12,
-    cls_feature_size=512,
-    reg_feature_size=1024,
+    cls_feature_size=256,
+    reg_feature_size=256,
 )
 detector.head = edict(
     num_regression_loss_terms=13,
@@ -191,7 +206,6 @@ detector.head = edict(
     test_cfg        = head_test,
     exp             = cfg.exp,
     data_cfg        = data,
-    is_fpn_debug = True,
 )
 detector.anchors = anchors
 detector.loss = head_loss

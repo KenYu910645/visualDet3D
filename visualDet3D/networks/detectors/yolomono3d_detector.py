@@ -27,6 +27,8 @@ class Yolo3D(nn.Module):
         self.network_cfg = network_cfg
 
         self.is_writen_anchor_file = False
+        
+        self.network_cfg.head.is_two_stage = getattr(network_cfg.head, 'is_two_stage', False)
 
     def build_core(self, network_cfg):
         self.core = YoloMono3DCore(network_cfg.backbone)
@@ -73,7 +75,6 @@ class Yolo3D(nn.Module):
         #     # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
         #     # print(f"anchors['mask'] = {anchors['mask'].shape}") # [1, 46080]
         #     # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2]
-
         
         # Output Anchor to file
         if (not self.is_writen_anchor_file) and self.network_cfg.head.data_cfg.is_overwrite_anchor_file:

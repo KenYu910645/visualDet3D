@@ -138,20 +138,20 @@ class Anchors(nn.Module):
                             num_pixels = image_shapes[i_level][0] * image_shapes[i_level][1]
                             anchor_means_list.append( image.new( np.expand_dims(np.tile(self.mean_npy[level], (num_pixels, 1)), axis=0) ) )
                             anchor_stds_list.append(  image.new( np.expand_dims(np.tile(self.std_npy[level],  (num_pixels, 1)), axis=0) ) )
-                            print(f"anchor_means_list[-1].shape = {anchor_means_list[-1].shape}")
+                            print(f"[anchor.py] anchor_means_list[-1].shape = {anchor_means_list[-1].shape}")
                             
                             # print(f"self.anchor_means.shape = {self.anchor_means.shape}")
                         self.anchor_means = torch.cat(anchor_means_list, dim=1)
                         self.anchor_stds = torch.cat(anchor_stds_list,  dim=1)
-                        print(f"self.anchor_means  = {self.anchor_means.shape}")
-                        print(f"self.anchor_stds  = {self.anchor_stds.shape}")
+                        print(f"[anchor.py] self.anchor_means  = {self.anchor_means.shape}")
+                        print(f"[anchor.py] self.anchor_stds  = {self.anchor_stds.shape}")
                         self.anchor_mean_std = torch.stack([self.anchor_means, self.anchor_stds], dim=-1).permute(1, 0, 2, 3) #[N, types, 6, 2]
 
                     else:
                         self.anchor_means = image.new( np.expand_dims(np.tile(self.mean_npy, (int(all_anchors.shape[0] / self.mean_npy.shape[0]), 1)), axis=0) )
                         self.anchor_stds  = image.new( np.expand_dims(np.tile(self.std_npy,  (int(all_anchors.shape[0] / self.mean_npy.shape[0]), 1)), axis=0) )
-                        print(f"self.anchor_means  = {self.anchor_means.shape}")
-                        print(f"self.anchor_stds  = {self.anchor_stds.shape}")
+                        print(f"[anchor.py] self.anchor_means  = {self.anchor_means.shape}")
+                        print(f"[anchor.py] self.anchor_stds  = {self.anchor_stds.shape}")
                         self.anchor_mean_std = torch.stack([self.anchor_means, self.anchor_stds], dim=-1).permute(1, 0, 2, 3) #[N, types, 6, 2]
                 
             all_anchors = np.expand_dims(all_anchors, axis=0)
@@ -203,7 +203,9 @@ class Anchors(nn.Module):
                                               (world_x3d.abs() < self.filter_x_threshold), dim=1)  #[B,N] any one type lies in target range
             else:
                 self.useful_mask = torch.ones([len(P2), N], dtype=torch.bool, device="cuda")
-
+            # print(f"self.useful_mask = {self.useful_mask.shape}") # torch.Size([8, 61520])
+            # print(f"[anchor.py] self.useful_mask = {torch.count_nonzero(self.useful_mask[0])}") # 9684
+            
             if self.readConfigFile:
                 return self.anchors, self.useful_mask, self.anchor_mean_std
             else:

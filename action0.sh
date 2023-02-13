@@ -1,18 +1,16 @@
-# ./launchers/det_precompute.sh config/anchor_gen.py train # test
-# ./launchers/eval.sh config/anchor_gen.py 1 /home/lab530/KenYu/visualDet3D/exp_output/anchor_gen/Mono3D/checkpoint/BevAnkYolo3D_49.pth validation
 
-# ./launchers/det_precompute.sh config/anchor_gen.py train
-# ./launchers/train.sh config/anchor_gen.py 1 anchor_gen
+# ./launchers/det_precompute.sh config/fpn_3d/fpn_pixelwise_debug.py train
+./launchers/train.sh config/fpn_3d/fpn_pixelwise_debug.py 1 fpn_pixelwise_debug
 
 # EXP_NAME=('anchor_gen_all_3Ddistance_bevAnchor_batch8' 'anchor_gen_all_L1distance_bevAnchor_batch1' 'anchor_gen_all_L1distance_bevAnchor_batch8' 'anchor_gen_all_maxIoU_gacAnchor_batch1' 'anchor_gen_all_maxIoU_gacAnchor_batch8')
 
-EXP_NAME=('anchor_gen_all_gac_original' 'anchor_gen_dense_all_occluded_object' 'anchor_gen_dense_all_occluded_object')
+# EXP_NAME=('seperate_cz')
 
-for exp_name in "${EXP_NAME[@]}"
-do
-    ./launchers/det_precompute.sh config/anchor_gen/"$exp_name".py train
-    ./launchers/train.sh config/anchor_gen/"$exp_name".py 1 "$exp_name"
-done
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/detector_test/"$exp_name".py train
+#     ./launchers/train.sh config/detector_test/"$exp_name".py 1 "$exp_name"
+# done
 
 # ./launchers/det_precompute.sh config/anchor_gen/anchor_gen_dense_all.py train
 # ./launchers/train.sh config/anchor_gen/anchor_gen_dense_all.py 1 anchor_gen_dense_all

@@ -1,14 +1,15 @@
 '''
-Car AP(Average Precision)@0.70, 0.70, 0.70:
-bbox AP:86.44, 69.54, 53.29
-bev  AP:6.38, 3.62, 3.08
-3d   AP:2.87, 1.71, 1.35
-aos  AP:75.18, 58.44, 44.87
+all_anchors = (61520, 4)
+
+bbox AP:49.74, 37.39, 27.80
+bev  AP:6.67, 3.58, 2.99
+3d   AP:2.84, 1.62, 1.27
+aos  AP:43.61, 31.89, 23.71
 Car AP(Average Precision)@0.70, 0.50, 0.50:
-bbox AP:86.44, 69.54, 53.29
-bev  AP:21.36, 14.09, 11.00
-3d   AP:17.04, 10.96, 8.21
-aos  AP:75.18, 58.44, 44.87
+bbox AP:49.74, 37.39, 27.80
+bev  AP:25.81, 15.70, 12.63
+3d   AP:20.72, 12.06, 9.31
+aos  AP:43.61, 31.89, 23.71
 '''
 
 from easydict import EasyDict as edict
@@ -24,8 +25,8 @@ trainer = edict(
     gpu = 0,
     max_epochs = 30,
     disp_iter = 1,
-    save_iter = 5,
-    test_iter = 5,
+    save_iter = 99,
+    test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -191,8 +192,8 @@ head_layer = edict(
     num_anchors=8, # 32
     num_cls_output=len(cfg.obj_types)+1,
     num_reg_output=12,
-    cls_feature_size=512,
-    reg_feature_size=1024,
+    cls_feature_size=256,
+    reg_feature_size=256,
 )
 detector.head = edict(
     num_regression_loss_terms=13,
