@@ -143,8 +143,8 @@ class Anchors(nn.Module):
                             # print(f"self.anchor_means.shape = {self.anchor_means.shape}")
                         self.anchor_means = torch.cat(anchor_means_list, dim=1)
                         self.anchor_stds = torch.cat(anchor_stds_list,  dim=1)
-                        print(f"self.anchor_means  = {self.anchor_means.shape}")
-                        print(f"self.anchor_stds  = {self.anchor_stds.shape}")
+                        print(f"self.anchor_means  = {self.anchor_means.shape}") # torch.Size([1, 69210, 6])
+                        print(f"self.anchor_stds  = {self.anchor_stds.shape}")   # torch.Size([1, 69210, 6])
                         self.anchor_mean_std = torch.stack([self.anchor_means, self.anchor_stds], dim=-1).permute(1, 0, 2, 3) #[N, types, 6, 2]
 
                     else:
