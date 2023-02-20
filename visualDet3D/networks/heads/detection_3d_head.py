@@ -14,7 +14,7 @@ from visualDet3D.networks.lib.ops import ModulatedDeformConvPack
 from visualDet3D.networks.lib.look_ground import LookGround
 from visualDet3D.networks.lib.cbam import CBAM
 from visualDet3D.networks.lib.bam import BAM
-
+from visualDet3D.networks.lib.coordatten import CoordAtt
 class AnchorBasedDetection3DHead(nn.Module):
     def __init__(self, num_features_in:int=1024,
                        num_classes:int=3,
@@ -32,7 +32,11 @@ class AnchorBasedDetection3DHead(nn.Module):
                        use_spatial_attention:bool=False,
                        is_two_stage:bool=False,
                        is_seperate_cz:bool=False,
-                       use_bam:bool=False):
+                       use_bam:bool=False,
+                       is_seperate_fpn_level_head:bool=False,
+                       is_seperate_2d:bool=False,
+                       use_coordinate_attetion:bool=False,
+                       is_fc_depth:bool=False,):
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
         
@@ -55,6 +59,10 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.is_two_stage = is_two_stage
         self.is_seperate_cz = is_seperate_cz
         self.use_bam = use_bam
+        self.is_seperate_fpn_level_head = is_seperate_fpn_level_head
+        self.is_seperate_2d = is_seperate_2d 
+        self.use_coordinate_attetion = use_coordinate_attetion
+        self.is_fc_depth = is_fc_depth
         
         print(f"self.is_fpn_debug = {self.is_fpn_debug}")
         print(f"self.use_channel_attention = {self.use_channel_attention}")
@@ -62,6 +70,10 @@ class AnchorBasedDetection3DHead(nn.Module):
         print(f"self.is_two_stage = {self.is_two_stage}")
         print(f"self.is_seperate_cz = {self.is_seperate_cz}")
         print(f"self.use_bam = {self.use_bam}")
+        print(f"self.is_seperate_fpn_level_head = {self.is_seperate_fpn_level_head}")
+        print(f"is_seperate_2d = {self.is_seperate_2d}")
+        print(f"use_coordinate_attetion = {self.use_coordinate_attetion}")
+        print(f"is_fc_depth = {self.is_fc_depth}")
 
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -831,6 +843,10 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             self.bam_layer = BAM(num_features_in)
             print(self.bam_layer)
         
+        if self.use_coordinate_attetion:
+            self.coord_atten_layer = CoordAtt(num_features_in, num_features_in)
+            print(self.coord_atten_layer)
+        
         self.cls_feature_extraction = nn.Sequential(
             nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
             nn.Dropout2d(0.3),
@@ -848,75 +864,74 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         self.cls_feature_extraction[-2].bias.data.fill_(0)
 
         print(f"GroundAwareHead  self.exp = {self.exp}")
-        if self.exp == "no_look_ground": # Without LookGround
-            assert  self.is_seperate_cz == False, "Haven't implement no_look_ground and seperate cz functino"
-            self.reg_feature_extraction = nn.Sequential(
-                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
-                nn.ReLU(),
-                
-                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
-                nn.ReLU(inplace=True),
-                
-                nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-                
-                AnchorFlatten(num_reg_output)
-            )
-            self.reg_feature_extraction[-2].weight.data.fill_(0)
-            self.reg_feature_extraction[-2].bias.data.fill_(0)
-        else:
-            if self.is_seperate_cz:
-                self.reg_feature_extraction = nn.Sequential(
-                    LookGround(num_features_in, self.exp),
-                    nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-                    nn.BatchNorm2d(reg_feature_size),
-                    nn.ReLU(),
-                    nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-                    nn.BatchNorm2d(reg_feature_size),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(reg_feature_size, num_anchors*(num_reg_output-1), kernel_size=3, padding=1),
-                    # AnchorFlatten((num_reg_output-1))
-                )
-                self.reg_feature_extraction[-1].weight.data.fill_(0)
-                self.reg_feature_extraction[-1].bias.data.fill_(0)
-            else:
-                self.reg_feature_extraction = nn.Sequential(
-                    LookGround(num_features_in, self.exp),
-                    nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-                    nn.BatchNorm2d(reg_feature_size),
-                    nn.ReLU(),
-                    nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-                    nn.BatchNorm2d(reg_feature_size),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-                    AnchorFlatten(num_reg_output)
-                )
-                self.reg_feature_extraction[-2].weight.data.fill_(0)
-                self.reg_feature_extraction[-2].bias.data.fill_(0)
+        assert self.exp != "no_look_ground", f"self.exp == no_look_ground, this setting is not supported anymore, because it's worse than baseline"
+
+        # 
+        num_reg_branch_output = num_reg_output
+        if self.is_seperate_cz: 
+            num_reg_branch_output -= 1
+        if self.is_seperate_2d:
+            num_reg_branch_output -= 4
+        
+        self.reg_feature_extraction = nn.Sequential(
+            LookGround(num_features_in, self.exp),
+            nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+            nn.BatchNorm2d(reg_feature_size),
+            nn.ReLU(),
+            nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+            nn.BatchNorm2d(reg_feature_size),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(reg_feature_size, num_anchors*num_reg_branch_output, kernel_size=3, padding=1),
+            # AnchorFlatten((num_reg_output))
+        )
+        self.reg_feature_extraction[-1].weight.data.fill_(0)
+        self.reg_feature_extraction[-1].bias.data.fill_(0)
         
         if self.is_seperate_cz:
-            self.cz_extraction = nn.Sequential(
-                LookGround(num_features_in, self.exp),
-                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
+            if self.is_fc_depth:
+                self.cz_feature_extraction = nn.Sequential(
+                    nn.Conv2d(num_features_in, 256, kernel_size = 1),
+                )
+            else:
+                self.cz_feature_extraction = nn.Sequential(
+                    LookGround(num_features_in, self.exp),
+                    nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                    nn.BatchNorm2d(reg_feature_size),
+                    nn.ReLU(),
+                    nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                    nn.BatchNorm2d(reg_feature_size),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(reg_feature_size, num_anchors*1, kernel_size=3, padding=1),
+                )
+                self.cz_feature_extraction[-1].weight.data.fill_(0)
+                self.cz_feature_extraction[-1].bias.data.fill_(0)
+        
+        if self.is_seperate_2d:
+            self.feature_2d_extraction = nn.Sequential(
+                nn.Conv2d(num_features_in, 256, kernel_size=3, padding=1),
+                nn.BatchNorm2d(256),
                 nn.ReLU(),
-                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-                nn.BatchNorm2d(reg_feature_size),
+                nn.Conv2d(256            , 256, kernel_size=3, padding=1),
+                nn.BatchNorm2d(256),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(reg_feature_size, num_anchors*1, kernel_size=3, padding=1),
-                # AnchorFlatten(1)
+                nn.Conv2d(256            , num_anchors*4, kernel_size=3, padding=1),
             )
-            self.cz_extraction[-1].weight.data.fill_(0)
-            self.cz_extraction[-1].bias.data.fill_(0)
+            self.feature_2d_extraction[-1].weight.data.fill_(0)
+            self.feature_2d_extraction[-1].bias.data.fill_(0)
         
     def forward(self, inputs):
-        
+        ########################
+        ### Attention Module ###
+        ########################
         if self.use_spatial_attention or self.use_channel_attention:
             inputs['features'] = self.cbam_layer(inputs['features'])
         
         if self.use_bam:
             inputs['features'] = self.bam_layer(inputs['features'])
+        
+        if self.use_coordinate_attetion:
+            inputs['features'] = self.coord_atten_layer(inputs['features'])
+        
         
         cls_preds = self.cls_feature_extraction(inputs['features'])
         if self.exp == "no_look_ground":
@@ -926,29 +941,44 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             
         # Concatenate !
         if self.is_seperate_cz:
-            cz_preds = self.cz_extraction(inputs)
-            # print(f"cz_preds = {cz_preds.shape}") # torch.Size([8, 32, 18, 80])
+            cz_preds = self.cz_feature_extraction(inputs)
+        if self.is_seperate_2d:
+            preds_2d = self.feature_2d_extraction(inputs['features'])
+        
+        if self.is_seperate_cz or self.is_seperate_2d:
+            print(f"cz_preds = {cz_preds.shape}") # torch.Size([8, 32, 18, 80])
             # print(f"reg_preds = {reg_preds.shape}") # torch.Size([8, 352, 18, 80])
             
-            reg_preds_new = reg_preds.view(reg_preds.shape[0], self.layer_cfg.num_anchors, -1, reg_preds.shape[2], reg_preds.shape[3])
-            cz_preds_new  = torch.unsqueeze(cz_preds, 2)
+            # Adjust Dimension to [B, num_anchor, num_regression_value, H, W]
+            reg_preds = reg_preds.view(reg_preds.shape[0], self.layer_cfg.num_anchors, -1, reg_preds.shape[2], reg_preds.shape[3])
+            if self.is_seperate_cz:
+                cz_preds  = torch.unsqueeze(cz_preds, 2)
+            if self.is_seperate_2d:
+                preds_2d  = preds_2d.view(preds_2d.shape[0], self.layer_cfg.num_anchors, -1, preds_2d.shape[2], preds_2d.shape[3])
             
-            # print(f"reg_preds_new = {reg_preds_new.shape}") # torch.Size([8, 32, 11, 18, 80])
-            # print(f"cz_preds_new = {cz_preds_new.shape}") #  torch.Size([8, 32, 1, 18, 80])
+            # print(f"reg_preds_new = {reg_preds.shape}") # torch.Size([8, 32, 11, 18, 80])
+            # print(f"cz_preds_new = {cz_preds.shape}") #  torch.Size([8, 32, 1, 18, 80])
+            # print(f"preds_2d = {preds_2d.shape}") #  torch.Size([8, 128, 1, 18, 80])
             # [dx, dy, dw, dh, cdx, cdy, cdz, cd_sin, cd_cos, w3d, h3d, l3d]
             #  0   1   2   3   4    5    6    7       8       9    10   11
-            all_reg_preds = torch.cat([reg_preds_new[:, :, :6 , :, :], cz_preds_new , reg_preds_new[:, :, 6: , :, :]], dim=2)
-            # print(f"all_reg_preds = {all_reg_preds.shape}") # torch.Size([8, 32, 12, 18, 80])
             
-            reg_preds = all_reg_preds.view(all_reg_preds.shape[0], -1, all_reg_preds.shape[3], all_reg_preds.shape[4])
+            # Concat seperate value together
+            if self.is_seperate_2d:
+                reg_preds = torch.cat([preds_2d , reg_preds], dim=2)
+            if self.is_seperate_cz:
+                reg_preds = torch.cat([reg_preds[:, :, :6 , :, :], cz_preds , reg_preds[:, :, 6: , :, :]], dim=2)
+            # print(f"all_reg_preds = {all_reg_preds.shape}") # torch.Size([8, 32, 12, 18, 80])
+            reg_preds = reg_preds.view(reg_preds.shape[0], -1, reg_preds.shape[3], reg_preds.shape[4])
             # print(f"reg_preds = {reg_preds.shape}") # torch.Size([8, 384, 18, 80])
             # reg_preds_new = torch.tensor_split(reg_preds, 32, dim=1)
-            reg_preds = reg_preds.permute(0, 2, 3, 1)
-            reg_preds = reg_preds.contiguous().view(reg_preds.shape[0], -1, 12)
-            # print(f"reg_preds = {reg_preds.shape}")
+            
+        # Anchor Flatten
+        reg_preds = reg_preds.permute(0, 2, 3, 1)
+        reg_preds = reg_preds.contiguous().view(reg_preds.shape[0], -1, 12)
+        # print(f"reg_preds = {reg_preds.shape}")
+        # print(f"reg_preds_new = {len(reg_preds_new)}") # 32
+        # print(f"reg_preds_new = {reg_preds_new[0].shape}") # torch.Size([8, 11, 18, 80])
         
-            # print(f"reg_preds_new = {len(reg_preds_new)}") # 32
-            # print(f"reg_preds_new = {reg_preds_new[0].shape}") # torch.Size([8, 11, 18, 80])
         return cls_preds, reg_preds
 
 class CzHead(AnchorBasedDetection3DHead):

@@ -20,6 +20,8 @@ class Yolo3D(nn.Module):
         
         self.exp = network_cfg.exp
         print(f"Yolo3D experiment setting = {self.exp}")
+        network_cfg.head.is_two_stage = getattr(network_cfg.head, 'is_two_stage', False)
+        
         self.build_head(network_cfg)
 
         self.build_core(network_cfg)
@@ -28,7 +30,7 @@ class Yolo3D(nn.Module):
 
         self.is_writen_anchor_file = False
         
-        self.network_cfg.head.is_two_stage = getattr(network_cfg.head, 'is_two_stage', False)
+        
 
     def build_core(self, network_cfg):
         self.core = YoloMono3DCore(network_cfg.backbone)
