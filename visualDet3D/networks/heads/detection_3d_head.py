@@ -37,6 +37,7 @@ class AnchorBasedDetection3DHead(nn.Module):
                        is_seperate_2d:bool=False,
                        use_coordinate_attetion:bool=False,
                        is_fc_depth:bool=False,):
+        
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
         
