@@ -893,6 +893,11 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                 self.cz_feature_extraction = nn.Sequential(
                     nn.Conv2d(num_features_in, 256, kernel_size = 1),
                 )
+                self.cz_fc_layer = nn.Sequential(
+                    nn.Linear(18*80*256, 1440),
+                    nn.ReLU(),
+                    nn.Linear(1440 , 1440),
+                )
             else:
                 self.cz_feature_extraction = nn.Sequential(
                     LookGround(num_features_in, self.exp),
@@ -942,12 +947,21 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             
         # Concatenate !
         if self.is_seperate_cz:
-            cz_preds = self.cz_feature_extraction(inputs)
+            if self.is_fc_depth:
+                cz_preds = self.cz_feature_extraction(inputs['features'])
+                cz_preds = cz_preds.permute(0, 2, 3, 1)
+                cz_preds = cz_preds.contiguous().view(cz_preds.shape[0], -1) # torch.Size([8, 368640])
+                cz_preds = self.cz_fc_layer(cz_preds) # torch.Size([8, 1440])
+                cz_preds = cz_preds.view(cz_preds.shape[0], -1, 18, 80) # torch.Size([8, 1, 18, 80])
+                cz_preds = cz_preds.repeat(1, 32, 1, 1) # torch.Size([8, 32, 18, 80])
+            else:
+                cz_preds = self.cz_feature_extraction(inputs)
+            
         if self.is_seperate_2d:
             preds_2d = self.feature_2d_extraction(inputs['features'])
         
         if self.is_seperate_cz or self.is_seperate_2d:
-            print(f"cz_preds = {cz_preds.shape}") # torch.Size([8, 32, 18, 80])
+            # print(f"cz_preds = {cz_preds.shape}") # torch.Size([8, 32, 18, 80])
             # print(f"reg_preds = {reg_preds.shape}") # torch.Size([8, 352, 18, 80])
             
             # Adjust Dimension to [B, num_anchor, num_regression_value, H, W]
