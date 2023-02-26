@@ -11,7 +11,7 @@ trainer = edict(
     gpu = 0,
     max_epochs = 30,
     disp_iter = 1,
-    save_iter = 999,
+    save_iter = 99,
     test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/detector_test' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/best' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 # path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
 
 if not os.path.isdir(path.project_path):
@@ -87,10 +87,9 @@ data = edict(
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'train_all.txt'),
     val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_anchor_gen_split', 'val_all.txt'),
     use_right_image = False,
-    max_occlusion = 2,
-    min_z         = 3,
+    max_occlusion = 999, # 2, 999
+    min_z        =  -999, # 3, -999,
     is_overwrite_anchor_file = False,
-    is_use_anchor_file = False, # use anchor_mean_std that generate during preprocessing
 )
 
 data.augmentation = edict(
@@ -101,10 +100,10 @@ data.augmentation = edict(
 )
 data.train_augmentation = [
     edict(type_name='ConvertToFloat'),
-    # edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
+    edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
     edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
     edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
-    # edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
+    edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
     edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
 ]
 data.test_augmentation = [
@@ -138,6 +137,7 @@ head_loss = edict(
     match_low_quality=False,
     balance_weight   = [20.0],
     regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
+    filter_anchor = False, # This prevent anchor filtering !!
 )
 head_test = edict(
     score_thr=0.5, # TODO, 0.75
@@ -163,7 +163,7 @@ head_layer = edict(
     num_cls_output=len(cfg.obj_types)+1,
     num_reg_output=12,
     cls_feature_size=512,
-    reg_feature_size=256,
+    reg_feature_size=1024,
 )
 detector.head = edict(
     num_regression_loss_terms=13,
@@ -175,11 +175,7 @@ detector.head = edict(
     test_cfg        = head_test,
     exp             = cfg.exp,
     data_cfg        = data,
-    is_two_stage    = False,
-    is_seperate_cz  = True,
-    is_seperate_2d  = True,
-    cz_reg_dim  = 1024,
-    reg_2d_dim  = 256,
+    num_dcnv2       = 3,
 )
 detector.anchors = anchors
 detector.loss = head_loss

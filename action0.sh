@@ -1,9 +1,36 @@
+./launchers/det_precompute.sh config/best/pac_3d_offset_xyz.py train
+./launchers/train.sh config/best/pac_3d_offset_xyz.py 1 pac_3d_offset_xyz
 
-./launchers/det_precompute.sh config/dialate/dialate_2_2_2.py train
-./launchers/train.sh config/dialate/dialate_2_2_2.py 1 dialate_2_2_2
+./launchers/det_precompute.sh config/best/pac_3d_offset_xy.py train
+./launchers/train.sh config/best/pac_3d_offset_xy.py 1 pac_3d_offset_xy
 
-./launchers/det_precompute.sh config/dialate/dialate_3_3_3.py train
-./launchers/train.sh config/dialate/dialate_3_3_3.py 1 dialate_3_3_3
+./launchers/det_precompute.sh config/best/pac_3d_offset_yz.py train
+./launchers/train.sh config/best/pac_3d_offset_yz.py 1 pac_3d_offset_yz
+
+# ./launchers/det_precompute.sh config/best/with_pose_potimization.py train
+# ./launchers/train.sh config/best/with_pose_potimization.py 1 with_pose_potimization
+
+# ./launchers/det_precompute.sh config/best/dcnv2_layer1.py train
+# ./launchers/train.sh config/best/dcnv2_layer1.py 1 dcnv2_layer1
+
+# ./launchers/det_precompute.sh config/best/dcnv2_layer3.py train
+# ./launchers/train.sh config/best/dcnv2_layer3.py 1 dcnv2_layer3
+
+# ./launchers/det_precompute.sh config/best/pac_3d_offset.py train
+# ./launchers/train.sh config/best/pac_3d_offset.py 1 pac_3d_offset
+
+# ./launchers/det_precompute.sh config/best/pac.py train
+# ./launchers/train.sh config/best/pac.py 1 pac
+
+# ./launchers/det_precompute.sh config/attention/bam_in_resnet.py train
+# ./launchers/train.sh config/attention/bam_in_resnet.py 1 bam_in_resnet
+
+
+# ./launchers/det_precompute.sh config/detector_test/seperate_2d_cz_appearce_256.py train
+# ./launchers/train.sh config/detector_test/seperate_2d_cz_appearce_256.py 1 seperate_2d_cz_appearce_256
+
+# ./launchers/det_precompute.sh config/detector_test/seperate_2d_cz_appearce_512.py train
+# ./launchers/train.sh config/detector_test/seperate_2d_cz_appearce_512.py 1 seperate_2d_cz_appearce_512
 
 # ./launchers/det_precompute.sh config/fpn_3d/fpn_pixelwise_pyrimid_anchor9_even_scale_seperate_head_reg1024_cls512.py train
 # ./launchers/train.sh config/fpn_3d/fpn_pixelwise_pyrimid_anchor9_even_scale_seperate_head_reg1024_cls512.py 1 fpn_pixelwise_pyrimid_anchor9_even_scale_seperate_head_reg1024_cls512

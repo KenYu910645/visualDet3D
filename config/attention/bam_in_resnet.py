@@ -11,7 +11,7 @@ trainer = edict(
     gpu = 0,
     max_epochs = 30,
     disp_iter = 1,
-    save_iter = 999,
+    save_iter = 1,
     test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/detector_test' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/attention' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 # path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
 
 if not os.path.isdir(path.project_path):
@@ -90,7 +90,6 @@ data = edict(
     max_occlusion = 2,
     min_z         = 3,
     is_overwrite_anchor_file = False,
-    is_use_anchor_file = False, # use anchor_mean_std that generate during preprocessing
 )
 
 data.augmentation = edict(
@@ -129,6 +128,7 @@ detector.backbone = edict(
     norm_eval=False,
     dilations=(1, 1, 1),
     exp=cfg.exp,
+    use_bam_in_resnet = True,
 )
 head_loss = edict(
     fg_iou_threshold = 0.5,
@@ -163,7 +163,7 @@ head_layer = edict(
     num_cls_output=len(cfg.obj_types)+1,
     num_reg_output=12,
     cls_feature_size=512,
-    reg_feature_size=256,
+    reg_feature_size=1024,
 )
 detector.head = edict(
     num_regression_loss_terms=13,
@@ -175,11 +175,9 @@ detector.head = edict(
     test_cfg        = head_test,
     exp             = cfg.exp,
     data_cfg        = data,
+    use_channel_attention = False,
+    use_spatial_attention = False,
     is_two_stage    = False,
-    is_seperate_cz  = True,
-    is_seperate_2d  = True,
-    cz_reg_dim  = 1024,
-    reg_2d_dim  = 256,
 )
 detector.anchors = anchors
 detector.loss = head_loss

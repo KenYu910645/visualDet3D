@@ -163,7 +163,7 @@ head_layer = edict(
     num_cls_output=len(cfg.obj_types)+1,
     num_reg_output=12,
     cls_feature_size=512,
-    reg_feature_size=256,
+    reg_feature_size=512, # 1024
 )
 detector.head = edict(
     num_regression_loss_terms=13,

@@ -6,6 +6,8 @@ import torch.optim as optim
 import math
 import torch.utils.model_zoo as model_zoo
 from visualDet3D.networks.utils.registry import BACKBONE_DICT
+from visualDet3D.networks.lib.bam import BAM
+
 def conv3x3(in_planes, out_planes, stride=1, dilation=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -18,7 +20,6 @@ model_urls = {
     'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }
-
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -111,9 +112,12 @@ class ResNet(nn.Module):
                        out_indices:Tuple[int, ...]=(-1, 0, 1, 2, 3),
                        frozen_stages:int=-1,
                        norm_eval:bool=True,
-                       exp:str=''
+                       exp:str='',
+                       use_bam_in_resnet:bool=False,
                        ):
         self.exp = exp
+        self.use_bam_in_resnet = use_bam_in_resnet
+        print(f"self.use_bam_in_resnet = {self.use_bam_in_resnet}")
         self.inplanes = 64
         super(ResNet, self).__init__()
 
@@ -143,7 +147,11 @@ class ResNet(nn.Module):
                 m.bias.data.zero_()
 
         #prior = 0.01
-
+        if self.use_bam_in_resnet:
+            self.bam1 = BAM(64*block.expansion)
+            self.bam2 = BAM(128*block.expansion)
+            self.bam3 = BAM(256*block.expansion)
+        
         self.train()
 
     def _make_layer(self, block, planes, blocks, stride=1, dilation=1):
@@ -171,7 +179,7 @@ class ResNet(nn.Module):
             if self.norm_eval:
                 self.freeze_bn()
 
-    def freeze_stages(self): # TODO froze coordconv too? maybe redo experiment B
+    def freeze_stages(self):
         if self.frozen_stages >= 0:
             self.conv1.eval()
             self.bn1.eval()
@@ -201,9 +209,9 @@ class ResNet(nn.Module):
             x = self.coordconv1(img_batch) # 5 channels
         else:
             x = self.conv1(img_batch) # Original, 3 channels
-            
         x = self.bn1(x)
         x = self.relu(x)
+        
         if -1 in self.out_indices:
             outs.append(x)
         x = self.maxpool(x)
@@ -212,9 +220,16 @@ class ResNet(nn.Module):
         for i in range(self.num_stages):
             layer = getattr(self, f"layer{i+1}")
             x = layer(x)
+            
+            if self.use_bam_in_resnet:
+                if   i == 0: x = self.bam1(x)
+                elif i == 1: x = self.bam2(x)
+                elif i == 2: x = self.bam3(x)
+            
             if i in self.out_indices:
                 outs.append(x)
             # print(f"x = {x.shape}")
+            
             # Resnet34
             # x = torch.Size([8, 64, 72, 320])
             # x = torch.Size([8, 128, 36, 160])

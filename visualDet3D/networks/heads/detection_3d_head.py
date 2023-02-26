@@ -15,6 +15,9 @@ from visualDet3D.networks.lib.look_ground import LookGround
 from visualDet3D.networks.lib.cbam import CBAM
 from visualDet3D.networks.lib.bam import BAM
 from visualDet3D.networks.lib.coordatten import CoordAtt
+from visualDet3D.networks.lib.pac import PerspectiveConv2d
+from visualDet3D.networks.lib.dcn import DeformableConv2d
+
 class AnchorBasedDetection3DHead(nn.Module):
     def __init__(self, num_features_in:int=1024,
                        num_classes:int=3,
@@ -36,8 +39,15 @@ class AnchorBasedDetection3DHead(nn.Module):
                        is_seperate_fpn_level_head:bool=False,
                        is_seperate_2d:bool=False,
                        use_coordinate_attetion:bool=False,
-                       is_fc_depth:bool=False,):
-        
+                       is_fc_depth:bool=False,
+                       cz_reg_dim:int=1024,
+                       reg_2d_dim:int=256,
+                       use_pac:bool=False,
+                       num_dcnv2:int=0,
+                       is_pac_3d_offset:bool=False,
+                       num_pac_layer:int=0,
+                       pac_mode:str=""):
+
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
         
@@ -50,9 +60,8 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.build_loss(**loss_cfg)
         self.backprojector = BackProjection()
         self.clipper = ClipBoxes()
-        print(f"AnchorBasedDetection3DHead self.exp = {exp}")
+        
         self.exp = exp
-        print(f"iou_type = {self.loss_cfg.iou_type}")
         self.layer_cfg = layer_cfg
         self.is_fpn_debug = is_fpn_debug
         self.use_channel_attention = use_channel_attention
@@ -64,7 +73,16 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.is_seperate_2d = is_seperate_2d 
         self.use_coordinate_attetion = use_coordinate_attetion
         self.is_fc_depth = is_fc_depth
+        self.cz_reg_dim  = cz_reg_dim
+        self.reg_2d_dim  = reg_2d_dim
+        # self.use_pac      = use_pac
+        self.num_dcnv2   = num_dcnv2
+        # self.is_pac_3d_offset = is_pac_3d_offset
+        self.num_pac_layer = num_pac_layer
+        self.pac_mode = pac_mode
         
+        print(f"AnchorBasedDetection3DHead self.exp = {exp}")
+        print(f"iou_type = {self.loss_cfg.iou_type}")
         print(f"self.is_fpn_debug = {self.is_fpn_debug}")
         print(f"self.use_channel_attention = {self.use_channel_attention}")
         print(f"self.use_spatial_attention = {self.use_spatial_attention}")
@@ -75,7 +93,14 @@ class AnchorBasedDetection3DHead(nn.Module):
         print(f"is_seperate_2d = {self.is_seperate_2d}")
         print(f"use_coordinate_attetion = {self.use_coordinate_attetion}")
         print(f"is_fc_depth = {self.is_fc_depth}")
-
+        print(f"cz_reg_dim = {self.cz_reg_dim}")
+        print(f"reg_2d_dim = {self.reg_2d_dim}")
+        # print(f"use_pac = {self.use_pac}")
+        print(f"num_dcnv2 = {self.num_dcnv2}")
+        # print(f"is_pac_3d_offset = {self.is_pac_3d_offset}")
+        print(f"self.num_pac_layer=  {self.num_pac_layer}")
+        print(f"self.pac_mode=  {self.pac_mode}")
+        
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
             layer_cfg['num_anchors'] = self.anchors.num_anchors
@@ -901,29 +926,48 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             else:
                 self.cz_feature_extraction = nn.Sequential(
                     LookGround(num_features_in, self.exp),
-                    nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-                    nn.BatchNorm2d(reg_feature_size),
+                    nn.Conv2d(num_features_in, self.cz_reg_dim, kernel_size=3, padding=1),
+                    nn.BatchNorm2d(self.cz_reg_dim),
                     nn.ReLU(),
-                    nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-                    nn.BatchNorm2d(reg_feature_size),
+                    nn.Conv2d(self.cz_reg_dim, self.cz_reg_dim, kernel_size=3, padding=1),
+                    nn.BatchNorm2d(self.cz_reg_dim),
                     nn.ReLU(inplace=True),
-                    nn.Conv2d(reg_feature_size, num_anchors*1, kernel_size=3, padding=1),
+                    nn.Conv2d(self.cz_reg_dim, num_anchors*1, kernel_size=3, padding=1),
                 )
                 self.cz_feature_extraction[-1].weight.data.fill_(0)
                 self.cz_feature_extraction[-1].bias.data.fill_(0)
         
         if self.is_seperate_2d:
             self.feature_2d_extraction = nn.Sequential(
-                nn.Conv2d(num_features_in, 256, kernel_size=3, padding=1),
-                nn.BatchNorm2d(256),
+                nn.Conv2d(num_features_in, self.reg_2d_dim, kernel_size=3, padding=1),
+                nn.BatchNorm2d(self.reg_2d_dim),
                 nn.ReLU(),
-                nn.Conv2d(256            , 256, kernel_size=3, padding=1),
-                nn.BatchNorm2d(256),
+                nn.Conv2d(self.reg_2d_dim , self.reg_2d_dim, kernel_size=3, padding=1),
+                nn.BatchNorm2d(self.reg_2d_dim),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(256            , num_anchors*4, kernel_size=3, padding=1),
+                nn.Conv2d(self.reg_2d_dim , num_anchors*4, kernel_size=3, padding=1),
             )
             self.feature_2d_extraction[-1].weight.data.fill_(0)
             self.feature_2d_extraction[-1].bias.data.fill_(0)
+        
+        if self.num_dcnv2 != 0:
+            self.dcn_layers = nn.ModuleList([
+                DeformableConv2d(1024, 1024, kernel_size=3, stride=1, padding=1)
+                for _ in range(self.num_dcnv2)
+            ])
+
+        if self.pac_mode == "3d_offset_xyz":
+            self.pac_xy = PerspectiveConv2d(num_features_in, num_features_in, "3d_offset_xy")
+            self.pac_yz = PerspectiveConv2d(num_features_in, num_features_in, "3d_offset_yz")
+            self.pac_xz = PerspectiveConv2d(num_features_in, num_features_in, "3d_offset_xz")
+            self.lxl_pac_conv = nn.Conv2d(num_features_in*3 , num_features_in, kernel_size=1)
+        else:
+            if self.num_pac_layer != 0:
+                self.pac_layers = nn.ModuleList([
+                    PerspectiveConv2d(num_features_in, num_features_in, self.pac_mode)
+                    for _ in range(self.num_pac_layer)
+                ])
+        
         
     def forward(self, inputs):
         ########################
@@ -938,6 +982,25 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         if self.use_coordinate_attetion:
             inputs['features'] = self.coord_atten_layer(inputs['features'])
         
+        # if self.use_pac:
+        #     inputs['features'] = self.perspective_conv(inputs['features'])
+        
+        ########################
+        ### Dilation  Module ###
+        ########################
+        if self.num_dcnv2 != 0:
+            for i in range(self.num_dcnv2):
+                inputs['features'] = self.dcn_layers[i](inputs['features'])
+        
+        if self.pac_mode == "3d_offset_xyz":
+            inputs['features'] = self.lxl_pac_conv( torch.concat([self.pac_xy(inputs['features']),
+                                                                  self.pac_yz(inputs['features']),
+                                                                  self.pac_xz(inputs['features'])],
+                                                                  dim=1) )
+        else:
+            if self.num_pac_layer != 0:
+                for i in range(self.num_pac_layer):
+                    inputs['features'] = self.pac_layers[i](inputs['features'])
         
         cls_preds = self.cls_feature_extraction(inputs['features'])
         if self.exp == "no_look_ground":
