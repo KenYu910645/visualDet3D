@@ -1002,6 +1002,7 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                 for i in range(self.num_pac_layer):
                     inputs['features'] = self.pac_layers[i](inputs['features'])
         
+        # print(f"[detection_3d_head.py] inputs['features'] = {inputs['features'].shape}") # [1024, 18, 80]
         cls_preds = self.cls_feature_extraction(inputs['features'])
         if self.exp == "no_look_ground":
             reg_preds = self.reg_feature_extraction(inputs['features'])

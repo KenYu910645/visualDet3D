@@ -5,13 +5,32 @@ import math
 import time
 from visualDet3D.networks.backbones import resnet
 from visualDet3D.networks.detectors.my_coordconv import MyCoordConv
+import torchvision.models as models
 
 class YoloMono3DCore(nn.Module):
     """Some Information about YoloMono3DCore"""
     def __init__(self, backbone_arguments=dict()):
         super(YoloMono3DCore, self).__init__()
         self.exp = backbone_arguments.exp
-        self.backbone = resnet(**backbone_arguments)
+        if "resnext_mode_name" in backbone_arguments: #  and backbone_arguments["resnext_mode_name"]:
+            # self.backbone  = models.resnext101_64x4d(pretrained=True)
+            resnext_mode = torch.hub.load('pytorch/vision:v0.10.0', 
+                                           backbone_arguments["resnext_mode_name"], 
+                                           pretrained=True)
+            
+            # Get a list of child modules
+            child_modules = list(resnext_mode.children())
+            # print(child_modules)
+
+            # Remove the last module in the list
+            child_modules.pop() # Remove Linear(in_features=2048, out_features=1000, bias=True)
+            child_modules.pop() # Remove AdaptiveAvgPool2d(output_size=(1, 1))
+            child_modules.pop() # Remove the final stage of ResNext
+
+            # Reconstruct the model with the remaining modules
+            self.backbone = nn.Sequential(*child_modules)
+        else:
+            self.backbone = resnet(**backbone_arguments)
         self.coordconv = MyCoordConv()
     
     def forward(self, x):
@@ -28,7 +47,8 @@ class YoloMono3DCore(nn.Module):
             x = self.backbone(x)
         else: # "baseline" or "C"
             # Without Coordconv/ CoordConv_C
-            x = self.backbone(x['image'])
+            x = self.backbone(x['image']) # [8, 2048, 9, 40]
+            x = torch.unsqueeze(x, dim=0)
         
         x = x[0]
         # print(f"x.shape = {x.shape}") # torch.Size([8, 1024, 18, 80]
