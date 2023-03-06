@@ -42,11 +42,11 @@ class AnchorBasedDetection3DHead(nn.Module):
                        is_fc_depth:bool=False,
                        cz_reg_dim:int=1024,
                        reg_2d_dim:int=256,
-                       use_pac:bool=False,
                        num_dcnv2:int=0,
-                       is_pac_3d_offset:bool=False,
                        num_pac_layer:int=0,
-                       pac_mode:str=""):
+                       pac_mode:str="",
+                       offset_3d:float=0.4,
+                       pad_mode:str="constant",):
 
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
@@ -75,11 +75,11 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.is_fc_depth = is_fc_depth
         self.cz_reg_dim  = cz_reg_dim
         self.reg_2d_dim  = reg_2d_dim
-        # self.use_pac      = use_pac
         self.num_dcnv2   = num_dcnv2
-        # self.is_pac_3d_offset = is_pac_3d_offset
         self.num_pac_layer = num_pac_layer
         self.pac_mode = pac_mode
+        self.offset_3d = offset_3d
+        self.pad_mode = pad_mode
         
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
         print(f"iou_type = {self.loss_cfg.iou_type}")
@@ -95,11 +95,11 @@ class AnchorBasedDetection3DHead(nn.Module):
         print(f"is_fc_depth = {self.is_fc_depth}")
         print(f"cz_reg_dim = {self.cz_reg_dim}")
         print(f"reg_2d_dim = {self.reg_2d_dim}")
-        # print(f"use_pac = {self.use_pac}")
         print(f"num_dcnv2 = {self.num_dcnv2}")
-        # print(f"is_pac_3d_offset = {self.is_pac_3d_offset}")
         print(f"self.num_pac_layer=  {self.num_pac_layer}")
         print(f"self.pac_mode=  {self.pac_mode}")
+        print(f"self.offset_3d=  {self.offset_3d}")
+        print(f"self.pad_mode=  {self.pad_mode}")
         
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -837,7 +837,6 @@ class StereoHead(AnchorBasedDetection3DHead):
         self.cls_feature_extraction[-2].bias.data.fill_(0)
 
         self.reg_feature_extraction = nn.Sequential(
-
             ConvBnReLU(num_features_in, reg_feature_size, (3, 3)),
             BasicBlock(reg_feature_size, reg_feature_size),
             nn.ReLU(),
@@ -956,17 +955,16 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                 for _ in range(self.num_dcnv2)
             ])
 
-        if self.pac_mode == "3d_offset_xyz":
-            self.pac_xy = PerspectiveConv2d(num_features_in, num_features_in, "3d_offset_xy")
-            self.pac_yz = PerspectiveConv2d(num_features_in, num_features_in, "3d_offset_yz")
-            self.pac_xz = PerspectiveConv2d(num_features_in, num_features_in, "3d_offset_xz")
-            self.lxl_pac_conv = nn.Conv2d(num_features_in*3 , num_features_in, kernel_size=1)
-        else:
-            if self.num_pac_layer != 0:
-                self.pac_layers = nn.ModuleList([
-                    PerspectiveConv2d(num_features_in, num_features_in, self.pac_mode)
-                    for _ in range(self.num_pac_layer)
-                ])
+        if self.num_pac_layer != 0:
+            self.pac_layers = nn.ModuleList([
+                PerspectiveConv2d(num_features_in,
+                                  num_features_in,
+                                  self.pac_mode,
+                                  offset_3d = self.offset_3d,
+                                  input_shape = (18, 80),
+                                  pad_mode=self.pad_mode)
+                for _ in range(self.num_pac_layer)
+            ])
         
         
     def forward(self, inputs):
@@ -982,9 +980,6 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         if self.use_coordinate_attetion:
             inputs['features'] = self.coord_atten_layer(inputs['features'])
         
-        # if self.use_pac:
-        #     inputs['features'] = self.perspective_conv(inputs['features'])
-        
         ########################
         ### Dilation  Module ###
         ########################
@@ -992,15 +987,9 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             for i in range(self.num_dcnv2):
                 inputs['features'] = self.dcn_layers[i](inputs['features'])
         
-        if self.pac_mode == "3d_offset_xyz":
-            inputs['features'] = self.lxl_pac_conv( torch.concat([self.pac_xy(inputs['features']),
-                                                                  self.pac_yz(inputs['features']),
-                                                                  self.pac_xz(inputs['features'])],
-                                                                  dim=1) )
-        else:
-            if self.num_pac_layer != 0:
-                for i in range(self.num_pac_layer):
-                    inputs['features'] = self.pac_layers[i](inputs['features'])
+        if self.num_pac_layer != 0:
+            for i in range(self.num_pac_layer):
+                inputs['features'] = self.pac_layers[i](inputs)
         
         # print(f"[detection_3d_head.py] inputs['features'] = {inputs['features'].shape}") # [1024, 18, 80]
         cls_preds = self.cls_feature_extraction(inputs['features'])

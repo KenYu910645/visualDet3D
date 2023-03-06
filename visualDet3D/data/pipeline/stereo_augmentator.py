@@ -28,6 +28,72 @@ from .augmentation_builder import Compose, build_single_augmentator
 
 # Added by spiderkiller
 @AUGMENTATION_DICT.register_module
+class EraseBackGround(object):
+    """
+    Erase all image background. only pixel in 2D bounding box will remain
+    """
+    def __init__(self):
+        pass
+        
+    def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
+        
+        print(f"left_image = {left_image.shape}")
+        print(f"p2 = {p2.shape}")
+        print(f"labels = {labels.shape}")
+        print(f"image_gt = {labels.image_gt.shape}")
+        
+        # left_image = left_image[:, ::-1, :]
+        # left_image = np.ascontiguousarray(left_image)
+
+        # if right_image is not None:
+        #     right_image = right_image[:, ::-1, :]
+        #     right_image = np.ascontiguousarray(right_image)
+
+        #     left_image, right_image = right_image, left_image
+        # if image_gt is not None:
+        #     image_gt = image_gt[:, ::-1]
+        #     image_gt = np.ascontiguousarray(image_gt)
+
+        # # flip the coordinates w.r.t the horizontal flip (only adjust X)
+        # if p2 is not None and p3 is not None:
+        #     p2, p3 = p3, p2
+        # if p2 is not None:
+        #     p2[0, 3] = -p2[0, 3]
+        #     p2[0, 2] = left_image.shape[1] - p2[0, 2] - 1
+        # if p3 is not None:
+        #     p3[0, 3] = -p3[0, 3]
+        #     p3[0, 2] = left_image.shape[1] - p3[0, 2] - 1
+        # if labels:
+        #     if isinstance(labels, list):
+        #         square_P2 = np.eye(4)
+        #         square_P2[0:3, :] = p2
+        #         p2_inv = np.linalg.inv(square_P2)
+        #         for obj in labels:
+        #             # In stereo horizontal 2D boxes will be fixed later when we use 3D projection as 2D anchor box
+        #             obj.bbox_l, obj.bbox_r = left_image.shape[1] - obj.bbox_r - 1, left_image.shape[1] - obj.bbox_l - 1
+                    
+        #             # 3D centers
+        #             z = obj.z
+        #             obj.x = -obj.x
+
+        #             # yaw
+        #             ry = obj.ry
+        #             ry = (-math.pi - ry) if ry < 0 else (math.pi - ry)
+        #             while ry > math.pi: ry -= math.pi * 2
+        #             while ry < (-math.pi): ry += math.pi * 2
+        #             obj.ry = ry
+
+        #             # alpha 
+        #             obj.alpha = theta2alpha_3d(ry, obj.x, z, p2)
+            
+        # if lidar is not None:
+        #     lidar[:, :, 0] = -lidar[:, :, 0]
+        
+        return left_image, right_image, p2, p3, labels, image_gt, lidar
+
+
+# Added by spiderkiller
+@AUGMENTATION_DICT.register_module
 class RandomZoom(object):
     """
     Randomly zoom in

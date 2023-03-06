@@ -1,11 +1,24 @@
-./launchers/det_precompute.sh config/best/pac_3d_offset_xyz.py train
-./launchers/train.sh config/best/pac_3d_offset_xyz.py 1 pac_3d_offset_xyz
 
-./launchers/det_precompute.sh config/best/pac_3d_offset_xy.py train
-./launchers/train.sh config/best/pac_3d_offset_xy.py 1 pac_3d_offset_xy
+EXP_NAME=('pac_constant_pad')
 
-./launchers/det_precompute.sh config/best/pac_3d_offset_yz.py train
-./launchers/train.sh config/best/pac_3d_offset_yz.py 1 pac_3d_offset_yz
+for exp_name in "${EXP_NAME[@]}"
+do
+    ./launchers/det_precompute.sh config/pac/"$exp_name".py train
+    ./launchers/train.sh config/pac/"$exp_name".py 1 "$exp_name"
+done
+
+
+# ./launchers/det_precompute.sh config/best/pac_3d_offset_xy_0.6.py train
+# ./launchers/train.sh config/best/pac_3d_offset_xy_0.6.py 1 pac_3d_offset_xy_0.6
+
+# ./launchers/det_precompute.sh config/best/pac_3d_offset_xyz.py train
+# ./launchers/train.sh config/best/pac_3d_offset_xyz.py 1 pac_3d_offset_xyz
+
+# ./launchers/det_precompute.sh config/best/pac_3d_offset_xy.py train
+# ./launchers/train.sh config/best/pac_3d_offset_xy.py 1 pac_3d_offset_xy
+
+# ./launchers/det_precompute.sh config/best/pac_3d_offset_yz.py train
+# ./launchers/train.sh config/best/pac_3d_offset_yz.py 1 pac_3d_offset_yz
 
 # ./launchers/det_precompute.sh config/best/with_pose_potimization.py train
 # ./launchers/train.sh config/best/with_pose_potimization.py 1 with_pose_potimization

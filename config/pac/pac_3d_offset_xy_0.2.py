@@ -175,7 +175,10 @@ detector.head = edict(
     test_cfg        = head_test,
     exp             = cfg.exp,
     data_cfg        = data,
-    num_dcnv2       = 1,
+    num_pac_layer   = 1,
+    pac_mode        = "3d_offset_xy",
+    offset_3d_xy_dx = 0.2,
+    offset_3d_xy_dy = 0.2,
 )
 detector.anchors = anchors
 detector.loss = head_loss

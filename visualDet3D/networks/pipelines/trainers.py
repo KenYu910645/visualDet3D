@@ -52,28 +52,28 @@ def train_mono_detection(data, module:nn.Module,
     loss_dict = module([image.cuda().contiguous(), image.new(annotation).cuda(), calibs.cuda()])
 
     # Print out loss on screen
-    if global_step % 10 == 0:
-        print("Step {:6} | reg_loss:{:.5f} cls_loss:{:.5f} | dx:{:.5f} dy:{:.5f} dw:{:.5f} dh:{:.5f} | cx:{:.5f} cy:{:.5f} cz:{:.5f} | dw:{:.5f} dh:{:.5f} dl:{:.5f} |  ".format(global_step, 
-                loss_dict['1/reg_loss'].detach().cpu().numpy()[0],
-                loss_dict['1/cls_loss'].detach().cpu().numpy()[0],
-                loss_dict['2/dx'],
-                loss_dict['2/dy'],
-                loss_dict['2/dw'],
-                loss_dict['2/dh'],
-                loss_dict['2/cdx'],
-                loss_dict['2/cdy'],
-                loss_dict['2/cdz'],
-                loss_dict['4/dw'],
-                loss_dict['4/dh'],
-                loss_dict['4/dl']))
-        # Reset loss_avg_dict
-        for k in loss_avg_dict: loss_avg_dict[k] = 0
-    else:
-        for k in loss_avg_dict:
-            if k == '1/reg_loss' or k == '1/cls_loss':
-                loss_avg_dict[k] += loss_dict[k].detach().cpu().numpy()[0] / 10
-            else:
-                loss_avg_dict[k] += loss_dict[k] / 10
+    # if global_step % 10 == 0:
+    #     print("Step {:6} | reg_loss:{:.5f} cls_loss:{:.5f} | dx:{:.5f} dy:{:.5f} dw:{:.5f} dh:{:.5f} | cx:{:.5f} cy:{:.5f} cz:{:.5f} | dw:{:.5f} dh:{:.5f} dl:{:.5f} |  ".format(global_step, 
+    #             loss_dict['1/reg_loss'].detach().cpu().numpy()[0],
+    #             loss_dict['1/cls_loss'].detach().cpu().numpy()[0],
+    #             loss_dict['2/dx'],
+    #             loss_dict['2/dy'],
+    #             loss_dict['2/dw'],
+    #             loss_dict['2/dh'],
+    #             loss_dict['2/cdx'],
+    #             loss_dict['2/cdy'],
+    #             loss_dict['2/cdz'],
+    #             loss_dict['4/dw'],
+    #             loss_dict['4/dh'],
+    #             loss_dict['4/dl']))
+    #     # Reset loss_avg_dict
+    #     for k in loss_avg_dict: loss_avg_dict[k] = 0
+    # else:
+    #     for k in loss_avg_dict:
+    #         if k == '1/reg_loss' or k == '1/cls_loss':
+    #             loss_avg_dict[k] += loss_dict[k].detach().cpu().numpy()[0] / 10
+    #         else:
+    #             loss_avg_dict[k] += loss_dict[k] / 10
             
     # Record loss in a average meter
     if loss_logger is not None:
