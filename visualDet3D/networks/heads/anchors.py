@@ -19,7 +19,8 @@ class Anchors(nn.Module):
                        filter_x_threshold:Optional[float]=40.0,
                        anchor_prior_channel=6,
                        external_pixelwise_anchor:str="",
-                       is_pyrimid_external_anchor:bool=False,):
+                       is_pyrimid_external_anchor:bool=False,
+                       external_pixelwise_only_2d_anchor:str="",):
         super(Anchors, self).__init__()
 
         self.pyramid_levels = pyramid_levels
@@ -34,9 +35,19 @@ class Anchors(nn.Module):
         print(f"self.readConfigFile = {self.readConfigFile}") # True, False during preprocessing
         self.external_pixelwise_anchor = external_pixelwise_anchor
         self.is_pyrimid_external_anchor = is_pyrimid_external_anchor
+        self.external_pixelwise_only_2d_anchor = external_pixelwise_only_2d_anchor
+        print(f"external_pixelwise_only_2d_anchor = {self.external_pixelwise_only_2d_anchor}")
 
+        if external_pixelwise_only_2d_anchor != "": # Only define 2d bbox no std and means
+            if is_pyrimid_external_anchor:
+                import pickle
+                with open(os.path.join(external_pixelwise_only_2d_anchor, "2dbbox.pkl"), 'rb') as f:
+                    self.bbox2d_npy = pickle.load(f)
+            else:
+                self.bbox2d_npy = np.load( os.path.join(external_pixelwise_only_2d_anchor, "2dbbox.npy"))
+                print(f"Load npy file from {external_pixelwise_only_2d_anchor}")
+        
         if external_pixelwise_anchor != "":
-            # TODO, current it only support one object type # 2dbbox.npy  mean.npy  std.npy
             if is_pyrimid_external_anchor:
                 import pickle
                 with open(os.path.join(external_pixelwise_anchor, "mean.pkl"), 'rb') as f:
@@ -51,6 +62,11 @@ class Anchors(nn.Module):
                 self.bbox2d_npy = np.load( os.path.join(external_pixelwise_anchor, "2dbbox.npy"))
                 # print(self.bbox2d_npy)
                 print(f"Load npy file from {external_pixelwise_anchor}")
+            # self.mean_npy   = np.load( os.path.join(external_pixelwise_anchor, "mean.npy"), allow_pickle=True) # (20, 6)
+            # self.std_npy    = np.load( os.path.join(external_pixelwise_anchor, "std.npy"), allow_pickle=True) # (20 ,6)
+            # self.bbox2d_npy = np.load( os.path.join(external_pixelwise_anchor, "2dbbox.npy"), allow_pickle=True)
+            # print(self.bbox2d_npy)
+            print(f"Load npy file from {external_pixelwise_anchor}")
         else:
             if self.readConfigFile:
                 self.anchors_mean_original = np.zeros([len(obj_types), len(self.scales) * len(self.pyramid_levels), len(self.ratios), anchor_prior_channel])
@@ -58,6 +74,7 @@ class Anchors(nn.Module):
                 # print(f"self.anchors_mean_original = {self.anchors_mean_original.shape}") # (1, 16, 2, 6)
                 # print(f"self.anchors_std_original = {self.anchors_std_original.shape}") # (1, 16, 2, 6)
                 
+                # Load mean and std which calcualted during preprocessing
                 save_dir = os.path.join(preprocessed_path, 'training')
                 for i in range(len(obj_types)):
                     npy_file = os.path.join(save_dir,'anchor_mean_{}.npy'.format(obj_types[i]))
@@ -68,7 +85,7 @@ class Anchors(nn.Module):
                     std_file = os.path.join(save_dir,'anchor_std_{}.npy'.format(obj_types[i]))
                     print(f"[Anchor.py] Loading {std_file}")
                     self.anchors_std_original[i] = np.load(std_file) #[16, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
-            
+        
         self.filter_y_threshold_min_max = filter_y_threshold_min_max
         self.filter_x_threshold = filter_x_threshold
 
@@ -99,23 +116,30 @@ class Anchors(nn.Module):
             image_shape = np.array(image_shape)
             image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in self.pyramid_levels]
             
-            print(f"image_shapes = {image_shapes}") # [array([18, 80]), .....]
+            print(f"[anchors.py] image_shapes = {image_shapes}") # [array([18, 80]), .....]
             # compute anchors over all pyramid levels
             all_anchors = np.zeros((0, 4)).astype(np.float32)
 
             for idx, p in enumerate(self.pyramid_levels):
                 if self.external_pixelwise_anchor == "":
-                    anchors = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales)
+                    if self.external_pixelwise_only_2d_anchor != "":
+                        if self.is_pyrimid_external_anchor:
+                            anchors = self.bbox2d_npy[p]
+                        else:
+                            anchors = self.bbox2d_npy
+                    else:
+                        anchors = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales)
                 else:
                     if self.is_pyrimid_external_anchor:
                         anchors = self.bbox2d_npy[p]
                     else:
                         anchors =  self.bbox2d_npy # 
-                print(f"anchors = {anchors.shape}") # From smallest to largest anchor
+                print(f"[anchors.py] anchors = {anchors.shape}") # From smallest to largest anchor
+                print(f"[anchors.py] self.strides[idx] = {self.strides[idx]}")
                 
                 shifted_anchors = shift(image_shapes[idx], self.strides[idx], anchors)
                 all_anchors     = np.append(all_anchors, shifted_anchors, axis=0)
-            print(f"all_anchors = {all_anchors.shape}") # (69210, 4) # (46080, 4)
+            print(f"[anchors.py] all_anchors = {all_anchors.shape}") # (69210, 4) # (46080, 4)
             
             if self.readConfigFile:
                 if self.external_pixelwise_anchor == "":
@@ -158,7 +182,7 @@ class Anchors(nn.Module):
             if isinstance(image, torch.Tensor):
                 self.anchors = image.new(all_anchors.astype(np.float32)) #[1, N, 4]
             elif isinstance(image, np.ndarray):
-                self.anchors = torch.tensor(all_anchors.astype(np.float32)).cuda()
+                self.anchors = torch.tensor(all_anchors.astype(np.float32)).to("cuda:1") # .cuda()
             self.anchors_image_x_center = self.anchors[0,:,0:4:2].mean(dim=1) #[N]
             self.anchors_image_y_center = self.anchors[0,:,1:4:2].mean(dim=1) #[N]
         
@@ -202,7 +226,7 @@ class Anchors(nn.Module):
                                               (world_y3d < self.filter_y_threshold_min_max[1]) *
                                               (world_x3d.abs() < self.filter_x_threshold), dim=1)  #[B,N] any one type lies in target range
             else:
-                self.useful_mask = torch.ones([len(P2), N], dtype=torch.bool, device="cuda")
+                self.useful_mask = torch.ones([len(P2), N], dtype=torch.bool, device="cuda:1")
             # print(f"self.useful_mask = {self.useful_mask.shape}") # torch.Size([8, 61520])
             # print(f"[anchor.py] self.useful_mask = {torch.count_nonzero(self.useful_mask[0])}") # 9684
             

@@ -110,7 +110,8 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
             ## Computing statistic for positive anchors
             if len(data_frame.label) > 0:
                 anchors, _ = anchor_manager(image[np.newaxis].transpose([0,3,1,2]), torch.tensor(P2).reshape([-1, 3, 4]))
-
+                # print(f"[imdb_precomputer_3d.py] anchors = {anchors.shape}") # [1, 184320, 4]
+                
                 for j in range(len(cfg.obj_types)):
                     
                     # Label
