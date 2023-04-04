@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch
 from visualDet3D.networks.utils import DETECTOR_DICT
 from visualDet3D.networks.detectors.yolomono3d_core import YoloMono3DCore
-from visualDet3D.networks.heads.detection_3d_head import GroundAwareHead, CzHead
+from visualDet3D.networks.heads.detection_3d_head import GroundAwareHead
 from visualDet3D.networks.heads.retinanet_3d_head import RetinaNet3DHead_BevAnk, RetinaNet3DHead_GACAnk
 from visualDet3D.networks.heads.bev_ank_head import BevAnk3DHead
 from visualDet3D.networks.detectors.retinanet_2d import RetinaNet3DCore
@@ -20,7 +20,7 @@ class Yolo3D(nn.Module):
         
         self.exp = network_cfg.exp
         print(f"Yolo3D experiment setting = {self.exp}")
-        network_cfg.head.is_two_stage = getattr(network_cfg.head, 'is_two_stage', False)
+        # network_cfg.head.is_two_stage = getattr(network_cfg.head, 'is_two_stage', False)
         
         self.build_head(network_cfg)
 
@@ -28,10 +28,11 @@ class Yolo3D(nn.Module):
 
         self.network_cfg = network_cfg
 
+        self.network_cfg.head.is_seperate_cz = getattr(network_cfg.head, 'is_seperate_cz', False)
+        print(f"network_cfg.head.is_seperate_cz = {network_cfg.head.is_seperate_cz}")
+        
         self.is_writen_anchor_file = False
         
-        
-
     def build_core(self, network_cfg):
         self.core = YoloMono3DCore(network_cfg.backbone)
 
@@ -62,21 +63,9 @@ class Yolo3D(nn.Module):
             features = torch.cat([features, grid], dim=1)
             # print(f"features.shape = {features.shape}")
 
-        cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch)) # [8, 46080, 2], [8, 46080, 12] 
+        # cls_preds, reg_preds, cz_preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch))
+        preds = self.bbox_head(dict(features=features, P2=P2, image=img_batch))
         anchors = self.bbox_head.get_anchor(img_batch, P2)
-         
-        # if self.network_cfg.is_fpn_debug:
-        #     cls_preds = cls_preds[:, 184320:230400, :]
-        #     reg_preds = reg_preds[:, 184320:230400, :]
-        #     anchors['anchors'] = anchors['anchors'][:, 184320:230400, :]
-        #     anchors['mask'] = anchors['mask'][:, 184320:230400]
-        #     anchors['anchor_mean_std_3d'] = anchors['anchor_mean_std_3d'][184320:230400, :, :, :]
-            
-        #     # print(f"cls_preds = {cls_preds.shape}") # torch.Size([8, 246080, 2])
-        #     # print(f"reg_preds = {reg_preds.shape}") # reg_preds = torch.Size([8, 246080, 12])
-        #     # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
-        #     # print(f"anchors['mask'] = {anchors['mask'].shape}") # [1, 46080]
-        #     # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2]
         
         # Output Anchor to file
         if (not self.is_writen_anchor_file) and self.network_cfg.head.data_cfg.is_overwrite_anchor_file:
@@ -92,18 +81,8 @@ class Yolo3D(nn.Module):
         # print(f"anchors['anchor_mean_std_3d'] = {anchors['anchor_mean_std_3d'].shape}") # [46080, 1, 6, 2], z, sin(\t), cos(\t)
         # print(f"valid anchor = {torch.count_nonzero(anchors['mask'])}") # 3860
         # 
-        if self.network_cfg.head.is_two_stage:
-            cz_preds = self.cz_head(dict(features=features, 
-                                    P2=P2, 
-                                    image=img_batch,
-                                    cls_preds=cls_preds,
-                                    reg_preds=reg_preds,
-                                    anchors=anchors,
-                                    annotations=annotations,))
-            # TODO append cz result to reg_result
-            # Flatten Anchor
-        
-        loss_dict = self.bbox_head.loss(cls_preds, reg_preds, anchors, annotations, P2)
+        # loss_dict = self.bbox_head.loss(cls_preds, reg_preds, cz_preds, anchors, annotations, P2)
+        loss_dict = self.bbox_head.loss(preds, anchors, annotations, P2)
         return loss_dict
 
     def build_tensor_grid(self, shape):
@@ -150,8 +129,8 @@ class Yolo3D(nn.Module):
             grid = features.new(grid).unsqueeze(0).repeat(features.shape[0], 1, 1, 1) #[1, 2, h, w]
             features = torch.cat([features, grid], dim=1)
 
-        cls_preds, reg_preds = self.bbox_head(dict(features=features, P2=P2))
-
+        # cls_preds, reg_preds, cz_preds = self.bbox_head(dict(features=features, P2=P2))
+        preds   = self.bbox_head(dict(features=features, P2=P2))
         anchors = self.bbox_head.get_anchor(img_batch, P2)
         # print(f"anchors['anchors'] = {anchors['anchors'].shape}") # [1, 46080, 4]
         # print(f"anchors['mask'] = {anchors['mask'].shape}") # [1, 46080]
@@ -163,13 +142,14 @@ class Yolo3D(nn.Module):
         #     anchors['anchors'] = anchors['anchors'][:, 184320:230400, :]
         #     anchors['mask'] = anchors['mask'][:, 184320:230400]
         #     anchors['anchor_mean_std_3d'] = anchors['anchor_mean_std_3d'][184320:230400, :, :, :]
-
-        scores, bboxes, cls_indexes = self.bbox_head.get_bboxes(cls_preds, reg_preds, anchors, P2, img_batch)
+        
+        # TODO, need to write some code to transform noam prediction to real thing 
+        scores, bboxes, cls_indexes, noam = self.bbox_head.get_bboxes(preds, anchors, P2, img_batch)
         # print(f"scores = {scores.shape}") # torch.Size([5]) # [number of detection], confident score
         # print(f"bboxes = {bboxes.shape}") # torch.Size([5, 11]),
         # print(f"cls_indexes = {cls_indexes.shape}") # torch.Size([5]), class_idx
 
-        return scores, bboxes, cls_indexes
+        return scores, bboxes, cls_indexes, noam
 
     def forward(self, inputs):
 
@@ -187,10 +167,6 @@ class GroundAwareYolo3D(Yolo3D):
     def build_head(self, network_cfg):
         self.bbox_head = GroundAwareHead(
             **(network_cfg.head)
-        )
-        if network_cfg.head.is_two_stage:
-            self.cz_head = CzHead(
-                **(network_cfg.head)
         )
 
 # Add to register BevAnkYolo3D

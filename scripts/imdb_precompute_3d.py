@@ -215,8 +215,7 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
 def main(config:str="config/config.py"):
     cfg = cfg_from_file(config)
     torch.cuda.set_device(cfg.trainer.gpu)
-
-    # TODO TODO TODO: I don't really think this is a good ideas
+    
     # original 
     cfg.data.max_occlusion = getattr(cfg.data, 'max_occlusion', 2)
     cfg.data.min_z         = getattr(cfg.data, 'min_z', 3)

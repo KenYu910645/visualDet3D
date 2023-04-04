@@ -1,12 +1,34 @@
 
-EXP_NAME=('pac_constant_pad')
+# ./launchers/det_precompute.sh config/data_augumentation/viz_da.py train
+# ./launchers/train.sh config/data_augumentation/add_cutout_2_hole.py 1 add_cutout_2_hole
+
+# data_augumentation/.py
+
+# # Evaluation on validation set
+# ./launchers/det_precompute.sh config/loss/noam_combine_regress.py train
+# ./launchers/eval.sh config/loss/noam_combine_regress.py 1 /home/lab530/KenYu/visualDet3D/exp_output/loss/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
+
+# ./launchers/det_precompute.sh config/loss/noam.py train
+# ./launchers/train.sh config/loss/noam.py 0 noam
+
+# ./launchers/det_precompute.sh config/best/fpn_kmeans18_large_only.py train
+# ./launchers/train.sh config/best/fpn_kmeans18_large_only.py 1 fpn_kmeans18_large_only
+
+EXP_NAME=('cubic_pac')
 
 for exp_name in "${EXP_NAME[@]}"
 do
-    ./launchers/det_precompute.sh config/pac/"$exp_name".py train
+    # ./launchers/det_precompute.sh config/pac/"$exp_name".py train
     ./launchers/train.sh config/pac/"$exp_name".py 1 "$exp_name"
 done
 
+# EXP_NAME=('add_random_zoom_only_in')
+
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/data_augumentation/"$exp_name".py train
+#     ./launchers/train.sh config/data_augumentation/"$exp_name".py 1 "$exp_name"
+# done
 
 # ./launchers/det_precompute.sh config/best/pac_3d_offset_xy_0.6.py train
 # ./launchers/train.sh config/best/pac_3d_offset_xy_0.6.py 1 pac_3d_offset_xy_0.6

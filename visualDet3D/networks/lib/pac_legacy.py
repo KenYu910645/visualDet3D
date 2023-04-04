@@ -68,8 +68,11 @@ class PerspectiveConv2d(nn.Module):
                  stride=1,
                  padding=1,
                  bias=False,
-                 offset_3d_xy_dx=0.4,
-                 offset_3d_xy_dy=0.4,):
+                 offset_3d=0.4,
+                 input_shape=(18,80),
+                 pad_mode="constant",):
+                #  offset_3d_xy_dx=0.4,
+                #  offset_3d_xy_dy=0.4,):
 
         super(PerspectiveConv2d, self).__init__()
         
@@ -79,7 +82,8 @@ class PerspectiveConv2d(nn.Module):
         self.stride = stride if type(stride) == tuple else (stride, stride)
         self.padding = padding
         self.mode = mode
-        
+        self.offset_3d = offset_3d
+        print(f"self.mode = {self.mode}")
         self.regular_conv = nn.Conv2d(in_channels=in_channels,
                                       out_channels=out_channels,
                                       kernel_size=kernel_size,
@@ -111,9 +115,9 @@ class PerspectiveConv2d(nn.Module):
                     for i, i_o in enumerate( [-dsx*slope, -dcx-dsx,   -dsx*slope, -dsx,   -dsx*slope, dcx-dsx,
                                                0        , -dcx    ,    0  , 0         ,    0,         dcx    ,
                                                dsx*slope, -dcx+dsx,    dsx*slope,  dsx,    dsx*slope, dcx+dsx ] ):
-                        offset[0, i, v_f_idx, u_f_idx] = i_o/D_RATIO
+                        offset[:, i, v_f_idx, u_f_idx] = i_o/D_RATIO
 
-                elif self.mode == '3D_offset_xz':
+                elif self.mode == '3d_offset_xz':
                     dx = 0.4 # m
                     dz = 1 # m
                     x, y, z = uvy_2_xyz((u, v, AVG_Y3D_CENTER), self.P2)
@@ -121,10 +125,10 @@ class PerspectiveConv2d(nn.Module):
                                                       (x-dx, y, z   ), (x, y, z   ), (x+dx, y, z   ),
                                                       (x-dx, y, z-dz), (x, y, z-dz), (x+dx, y, z-dz)]):
                         ui, vi = xyz_2_uv((xi, yi, zi), self.P2)
-                        offset[0, i*2  , v_f_idx, u_f_idx] = (vi-v)/D_RATIO
-                        offset[0, i*2+1, v_f_idx, u_f_idx] = (ui-u)/D_RATIO
+                        offset[:, i*2  , v_f_idx, u_f_idx] = (vi-v)/D_RATIO
+                        offset[:, i*2+1, v_f_idx, u_f_idx] = (ui-u)/D_RATIO
                 
-                elif self.mode == '3D_offset_yz':
+                elif self.mode == '3d_offset_yz':
                     dy = 0.5 # m
                     dz = 1.0 # m
                     x, y, z = uvy_2_xyz((u, v, AVG_Y3D_CENTER), self.P2)
@@ -132,28 +136,36 @@ class PerspectiveConv2d(nn.Module):
                                                       (x, y   , z-dz), (x, y   , z), (x, y   , z+dz),
                                                       (x, y+dy, z-dz), (x, y+dy, z), (x, y+dy, z+dz)]):
                         ui, vi = xyz_2_uv((xi, yi, zi), self.P2)
-                        offset[0, i*2  , v_f_idx, u_f_idx] = (vi-v)/D_RATIO
-                        offset[0, i*2+1, v_f_idx, u_f_idx] = (ui-u)/D_RATIO
+                        offset[:, i*2  , v_f_idx, u_f_idx] = (vi-v)/D_RATIO
+                        offset[:, i*2+1, v_f_idx, u_f_idx] = (ui-u)/D_RATIO
 
-                elif self.mode == '3D_offset_xy':
-                    dx = offset_3d_xy_dx
-                    dy = offset_3d_xy_dy
+                elif self.mode == '3d_offset_xy':
+                    dx = self.offset_3d
+                    dy = self.offset_3d
+                    
                     x, y, z = uvy_2_xyz((u, v, AVG_Y3D_CENTER), self.P2)
                     for i, (xi, yi, zi) in enumerate([(x-dx, y-dy, z), (x, y-dy, z), (x+dx, y-dy, z),
                                                       (x-dx, y   , z), (x, y   , z), (x+dx, y   , z),
                                                       (x-dx, y+dy, z), (x, y+dy, z), (x+dx, y+dy, z)]):
                         ui, vi = xyz_2_uv((xi, yi, zi), self.P2)
-                        offset[0, i*2  , v_f_idx, u_f_idx] = (vi-v)/D_RATIO
-                        offset[0, i*2+1, v_f_idx, u_f_idx] = (ui-u)/D_RATIO
-
+                        offset[:, i*2  , v_f_idx, u_f_idx] = (vi-v)/D_RATIO
+                        offset[:, i*2+1, v_f_idx, u_f_idx] = (ui-u)/D_RATIO
+                else:
+                    print(f"Not support mode = {self.mode}")
+                    raise NotImplementedError
+                
                 # add offset from regular convolution
-                offset[0, :, v_f_idx, u_f_idx] -= np.array([-1,-1,  -1,0,  -1,1,
+                offset[:, :, v_f_idx, u_f_idx] -= np.array([-1,-1,  -1,0,  -1,1,
                                                              0,-1,   0,0,   0,1,
                                                              1,-1,   1,0,   1,1])
         self.offset = torch.from_numpy(offset).type(torch.float32).cuda()
 
-    def forward(self, x):
+    def forward(self, inputs):
+        # B = x.shape[0]
+        x  = inputs['features']
+        P2 = inputs['P2']
         B = x.shape[0]
+        
         # TODO generate different offset according to each P2
         x = torchvision.ops.deform_conv2d(input=x, 
                                           offset=self.offset[:B, :, :, :],

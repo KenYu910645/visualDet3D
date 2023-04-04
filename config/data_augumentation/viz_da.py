@@ -82,9 +82,10 @@ data = edict(
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'viz_da', 'train.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'viz_da', 'val.txt'),
-    use_right_image = True,
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'train.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'val.txt'),
+    use_right_image = False, # True,
+    is_reproject    = False, # True
 )
 
 data.augmentation = edict(
@@ -97,8 +98,10 @@ data.train_augmentation = [
     edict(type_name='ConvertToFloat'),
     # edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
     edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
-    # edict(type_name='RandomZoom'),
     edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
+    edict(type_name='RandomJit', keywords=edict(jit_upper_bound=0.2)),
+    # edict(type_name='RandomZoom', keywords=edict(scale_range=(0.8, 0.8))), # (0.8, 1.2)
+    # edict(type_name='CutOut', keywords=edict(num_hole=4, mask_width=32)),
     # edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
     # edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
 ]

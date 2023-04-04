@@ -182,7 +182,7 @@ class Anchors(nn.Module):
             if isinstance(image, torch.Tensor):
                 self.anchors = image.new(all_anchors.astype(np.float32)) #[1, N, 4]
             elif isinstance(image, np.ndarray):
-                self.anchors = torch.tensor(all_anchors.astype(np.float32)).to("cuda:1") # .cuda()
+                self.anchors = torch.tensor(all_anchors.astype(np.float32)).cuda()
             self.anchors_image_x_center = self.anchors[0,:,0:4:2].mean(dim=1) #[N]
             self.anchors_image_y_center = self.anchors[0,:,1:4:2].mean(dim=1) #[N]
         
@@ -226,7 +226,7 @@ class Anchors(nn.Module):
                                               (world_y3d < self.filter_y_threshold_min_max[1]) *
                                               (world_x3d.abs() < self.filter_x_threshold), dim=1)  #[B,N] any one type lies in target range
             else:
-                self.useful_mask = torch.ones([len(P2), N], dtype=torch.bool, device="cuda:1")
+                self.useful_mask = torch.ones([len(P2), N], dtype=torch.bool, device="cuda")
             # print(f"self.useful_mask = {self.useful_mask.shape}") # torch.Size([8, 61520])
             # print(f"[anchor.py] self.useful_mask = {torch.count_nonzero(self.useful_mask[0])}") # 9684
             

@@ -48,6 +48,8 @@ class Compose(object):
         for t in self.transforms:
             left_image, right_image, p2, p3, labels, image_gt, lidar = t(left_image, right_image, p2, p3, labels, image_gt, lidar)
         return_list = [left_image, right_image, p2, p3, labels, image_gt, lidar]
+        # print(f"[augmentation_builder.py]return_list[0] = {return_list[0].shape}")
+        
         if self.is_return_all:
             return return_list
         return [item for item in return_list if item is not None]

@@ -25,6 +25,7 @@ from visualDet3D.networks.utils.registry import AUGMENTATION_DICT
 from visualDet3D.data.kitti.kittidata import KittiObj
 import torch
 from .augmentation_builder import Compose, build_single_augmentator
+import random as random_pkg
 
 # Added by spiderkiller
 @AUGMENTATION_DICT.register_module
@@ -51,43 +52,117 @@ class EraseBackGround(object):
                 
         return left_image, right_image, p2, p3, labels, image_gt, lidar
 
-
 # Added by spiderkiller
 @AUGMENTATION_DICT.register_module
 class RandomZoom(object):
     """
     Randomly zoom in
     """
-    def __init__(self):
-        self.s = 1.2 # Scaling factor
+    def __init__(self, scale_range):
+        self.s_low_bound, self.s_up_bound = scale_range # Scaling factor
 
     def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
         
-        h, w, c = left_image.shape
-
-        # Deal with Left_image
-        left_image = left_image[int(h/2 - h/(2*self.s)) : int(h/2 + h/(2*self.s)),
-                                int(w/2 - w/(2*self.s)) : int(w/2 + w/(2*self.s))]
-        left_image = cv2.resize(left_image, (w, h), interpolation=cv2.INTER_AREA)
+        h, w, c = left_image.shape # (288, 1280, 3)
+        
+        cu = p2[0, 2]
+        cv = p2[1, 2]
+        
+        # Randomly generate scale in range
+        s = random_pkg.uniform(self.s_low_bound, self.s_up_bound)
+        
+        left_image_new_scale = cv2.resize(left_image, (0,0), fx=s, fy=s)
+        if s > 1.0: # Crop In 
+            left_image = left_image_new_scale[int(cv*s - cv) : int(cv*s - cv) + h,
+                                              int(cu*s - cu) : int(cu*s - cu) + w]
+        else:# Pad out
+            crop_x1, crop_y1, crop_x2, crop_y2 = ( int(cu*s - cu), 
+                                                   int(cv*s - cv), 
+                                                   int(cu*s - cu) + w, 
+                                                   int(cv*s - cv) + h )
+            # If crop region extends beyond image boundaries, adjust crop region and zero-pad image
+            left_image = np.pad(left_image_new_scale, ((abs(crop_y1), crop_y2-left_image_new_scale.shape[0]), 
+                                                       (abs(crop_x1), crop_x2-left_image_new_scale.shape[1]), 
+                                                        (0,0)), mode='constant')
 
         # Deal with right_image
         if right_image is not None:
+            raise NotImplementedError
             right_image = right_image[int(h/2 - h/(2*self.s)) : int(h/2 + h/(2*self.s)),
                                       int(w/2 - w/(2*self.s)) : int(w/2 + w/(2*self.s))]
             right_image = cv2.resize(right_image, (w, h), interpolation=cv2.INTER_AREA)
         
-        z_offset = 30 - (30/self.s) # use z=30 as anchor point
-
         # Deal with labels
+        # 'alpha', 'bbox_b', 'bbox_l', 'bbox_r', 'bbox_t', 'h', 'l', 'occluded', 'ry', 'score', 'truncated', 'type', 'w', 'x', 'y', 'z'
         if labels:
             if isinstance(labels, list):
+                # 2d bbox label will be take care at in visualDet3D/data/kitti/dataset/mono_dataset.py
+                # it reproject 3d bbox back it image plane to get 2d bbox.
+                # it's no need to jusify alpha as well, because mono_dataset.py do that when reproject option is on
+                
+                # TODO, i think it should be cz/s, not z3d BUG!!!!!
                 for obj in labels:
-                    # Deal with 3D bbox
-                    obj.z -= z_offset
-                    pass
+                    dz = obj.z*(1-1/s)
+                    obj.z -= dz
         
         return left_image, right_image, p2, p3, labels, image_gt, lidar
 
+# Added by spiderkiler
+@AUGMENTATION_DICT.register_module
+class RandomJit(object):
+    """
+    Randomly zoom in
+    """
+    def __init__(self, jit_upper_bound):
+        self.jit_upper_bound = jit_upper_bound
+
+    def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
+        # Deal with labels
+        # 'alpha', 'bbox_b', 'bbox_l', 'bbox_r', 'bbox_t', 'h', 'l', 'occluded', 'ry', 'score', 'truncated', 'type', 'w', 'x', 'y', 'z'
+        if labels:
+            if isinstance(labels, list):
+                # 2d bbox label will be take care at in visualDet3D/data/kitti/dataset/mono_dataset.py
+                # it reproject 3d bbox back it image plane to get 2d bbox.
+                # it's no need to jusify alpha as well, because mono_dataset.py do that when reproject option is on
+                for obj in labels:
+                    box_width = obj.bbox_r - obj.bbox_l
+                    box_hight = obj.bbox_b - obj.bbox_t
+                    dx = box_width * random_pkg.uniform(-self.jit_upper_bound, self.jit_upper_bound)
+                    dy = box_hight * random_pkg.uniform(-self.jit_upper_bound, self.jit_upper_bound)
+                    obj.bbox_r += dx
+                    obj.bbox_l += dx
+                    obj.bbox_b += dy
+                    obj.bbox_t += dy
+        
+        return left_image, right_image, p2, p3, labels, image_gt, lidar
+
+
+# Added by spiderkiller
+@AUGMENTATION_DICT.register_module
+class CutOut(object):
+    """
+    Randomly Cutout 2/4 hole in input image
+    """
+    def __init__(self, num_hole, mask_width):
+        self.num_hole   = num_hole # How many hole add in the image
+        self.mask_width = mask_width # How width the hole are
+    
+    def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
+        
+        h, w, c = left_image.shape
+        
+        for _ in range(self.num_hole):
+            mx, my = ( random_pkg.randint(0, w-self.mask_width), 
+                       random_pkg.randint(0, h-self.mask_width) ) # Left-top corner of the mask
+        
+            # Deal with Left_image
+            left_image [my : my+self.mask_width, mx : mx+self.mask_width] = 0
+
+            # Deal with right_image
+            if right_image != None:
+                right_image[my : my+self.mask_width, mx : mx+self.mask_width] = 0
+        
+        return left_image, right_image, p2, p3, labels, image_gt, lidar
 
 
 @AUGMENTATION_DICT.register_module
@@ -121,8 +196,6 @@ class Normalize(object):
             right_image /= np.tile(self.stds, int(right_image.shape[2]/self.stds.shape[0]))
             right_image = right_image.astype(np.float32)
         return left_image, right_image, p2, p3, labels, image_gt, lidar
-
-
 @AUGMENTATION_DICT.register_module
 class Resize(object):
     """
@@ -319,7 +392,6 @@ class CropTop(object):
                     obj.bbox_t -= upper
 
         return left_image, right_image, p2, p3, labels, image_gt, lidar
-
 
 @AUGMENTATION_DICT.register_module
 class CropRight(object):
@@ -588,7 +660,6 @@ class RandomHue(object):
                 right_image[:, :, 0][right_image[:, :, 0] < 0.0] += 360.0
         return left_image, right_image, p2, p3, labels, image_gt, lidar
 
-
 @AUGMENTATION_DICT.register_module
 class ConvertColor(object):
     """
@@ -694,6 +765,7 @@ class RandomEigenvalueNoise(object):
 @AUGMENTATION_DICT.register_module
 class PhotometricDistort(object):
     """
+    Jitter contrast, saturation and hue
     Packages all photometric distortions into a single transform.
     """
     def __init__(self, distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32):
@@ -730,7 +802,6 @@ class PhotometricDistort(object):
         distortion = Compose.from_transforms(distortion)
 
         return distortion(left_image.copy(), right_image if right_image is None else right_image.copy(), p2, p3, labels, image_gt, lidar)
-
 
 class Augmentation(object):
     """

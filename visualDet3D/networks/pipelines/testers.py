@@ -21,11 +21,10 @@ def test_mono_detection(data, module:nn.Module,
                      cfg:EasyDict=None)-> Tuple[torch.Tensor, torch.Tensor, List[str]]:
     image, P2 = data[0], data[1]
 
-    scores, bbox, obj_index = module(
+    scores, bbox, obj_index, noam = module(
         [image.cuda().float().contiguous(), torch.tensor(P2).cuda().float()])
     obj_types = [cfg.obj_types[i.item()] for i in obj_index]
-
-    return scores, bbox, obj_types
+    return scores, bbox, obj_types, noam
 
 @PIPELINE_DICT.register_module
 @torch.no_grad()

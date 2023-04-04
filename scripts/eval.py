@@ -1,9 +1,9 @@
 
-import importlib
-from re import L
+# I don't know who's using the matplotlib, i just turn it off here
+import matplotlib
+matplotlib.use('Agg')
+
 import fire
-import os
-import copy
 import torch
 
 from _path_init import *

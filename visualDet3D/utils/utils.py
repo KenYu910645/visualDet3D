@@ -7,6 +7,11 @@ import tempfile
 import shutil
 import importlib
 from easydict import EasyDict
+
+import sys
+sys.path.insert(0, "/home/lab530/KenYu/ml_toolkit/noam/")
+from noam import noam_encode
+
 class LossLogger():
     def __init__(self, recorder, data_split='train'):
         self.recorder = recorder
@@ -38,7 +43,6 @@ def convertAlpha2Rot(alpha, cx, P2):
     ry3d[np.where(ry3d > np.pi)] -= 2 * np.pi
     ry3d[np.where(ry3d <= -np.pi)] += 2 * np.pi
     return ry3d
-
 
 def convertRot2Alpha(ry3d, cx, P2):
     cx_p2 = P2[..., 0, 2]
@@ -98,28 +102,72 @@ def draw_3D_box(img, corners, color = (255, 255, 0)):
     cv2.line(img, points[0], points[1], color)
     return img
 
-def compound_annotation(labels, max_length, bbox2d, bbox_3d, loc_3d_ry, obj_types):
+def compound_annotation(labels, max_length, bbox2d, bbox3d, loc_3d_ry, obj_types, calibs, is_noam_loss=False):
     """ Compound numpy-like annotation formats. Borrow from Retina-Net
-    
     Args:
-        labels: List[List[str]]
+        labels: List[List[str]], [B][num_gts] - 'Car'
         max_length: int, max_num_objects, can be dynamic for each iterations
-        bbox_2d: List[np.ndArray], [left, top, right, bottom].
-        bbox_3d: List[np.ndArray], [cam_x, cam_y, z, w, h, l, alpha].
+        bbox2d: List[np.ndArray], [left, top, right, bottom]. 
+        bbox3d: List[np.ndArray], [cam_x, cam_y, z, w, h, l, alpha].
         loc_3d_ry: [x3d, y3d, z3d, rot_y]
         obj_types: List[str]
+        calibs : [B, 3, 4] # [8, 3, 4]
     Return:
-        np.ndArray, [batch_size, max_length, 12]
-            [x1, y1, x2, y2, cls_index, cx, cy, z, w, h, l, alpha]
+    annotations
+        np.ndArray, [batch_size, max_length, 16] # (8, 12, 16)
+            [x1, y1, x2, y2, cls_index, cx, cy, z, w, h, l, alpha, x3d, y3d, z3d, rot_y]
+             0   1   2   3   4          5   6   7  8  9  10 11     12   13   14   15
             cls_index = -1 if empty
     """
-    annotations = np.ones([len(labels), max_length, bbox_3d[0].shape[-1] + 9]) * -1
-    for i in range(len(labels)):
-        label = labels[i]
-        for j in range(len(label)):
-            annotations[i, j] = np.concatenate([
-                bbox2d[i][j], [obj_types.index(label[j])], bbox_3d[i][j], loc_3d_ry[i][j]
-            ])
+    # B = len(labels) # batch size
+    
+    if   is_noam_loss: annotations = np.ones([len(labels), max_length, 24]) * -1
+    else             : annotations = np.ones([len(labels), max_length, 16]) * -1
+    
+    for i_batch in range(len(labels)):
+        label = labels[i_batch]
+        if is_noam_loss:
+            if len(label) != 0:                
+                xyzwhl = np.concatenate([loc_3d_ry[i_batch][:,  :3],
+                                        bbox3d   [i_batch][:, 4:5],
+                                        bbox3d   [i_batch][:, 3:4],
+                                        bbox3d   [i_batch][:, 5:6] ], axis=1)
+                # print(f"xyzwhl = {xyzwhl.shape}")
+                
+                noam = noam_encode(xyzwhl, calibs[i_batch].cpu().numpy()) # (n_gts, 8)
+
+            for i_gt in range(len(label)): # Number of Groundtrue
+                annotations[i_batch, i_gt] = np.concatenate([
+                    bbox2d[i_batch][i_gt], 
+                    [obj_types.index(label[i_gt])],
+                    bbox3d[i_batch][i_gt],
+                    loc_3d_ry[i_batch][i_gt],
+                    noam[i_gt, :]])
+        else:
+            for i_gt in range(len(label)): # Number of Groundtrue
+                annotations[i_batch, i_gt] = np.concatenate([
+                    bbox2d[i_batch][i_gt], 
+                    [obj_types.index(label[i_gt])],
+                    bbox3d[i_batch][i_gt],
+                    loc_3d_ry[i_batch][i_gt]])
+
+    # annotations = np.ones([len(labels), max_length, 16]) * -1
+    
+
+    # The block that works
+    # annotations = np.ones([len(labels), max_length, bbox3d[0].shape[-1] + 9]) * -1
+    # for i in range(len(labels)):
+    #     label = labels[i]
+    #     for j in range(len(label)):
+    #         annotations[i, j] = np.concatenate([
+    #             bbox2d[i][j], [obj_types.index(label[j])], bbox3d[i][j], loc_3d_ry[i][j]
+    #         ])
+    
+    # # print the thread ID for each batch
+    # thread_id = threading.get_ident()
+    # print(f"Thread ID = {thread_id}")
+
+    # print(annotations.shape) # (8, 12, 16/24)
     return annotations
 
 class AverageMeter(object):
@@ -141,7 +189,7 @@ class AverageMeter(object):
 
 def cfg_from_file(cfg_filename:str)->EasyDict:
     assert cfg_filename.endswith('.py')
-
+    # print(cfg_filename) # config/data_augumentation/add_cutout_2_hole.py
     with tempfile.TemporaryDirectory() as temp_config_dir:
         temp_config_file = tempfile.NamedTemporaryFile(dir=temp_config_dir, suffix='.py')
         temp_config_name = os.path.basename(temp_config_file.name)

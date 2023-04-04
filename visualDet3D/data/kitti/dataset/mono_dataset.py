@@ -57,7 +57,7 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         self.is_train = is_train
         self.obj_types = obj_types
         self.use_right_image = getattr(cfg.data, 'use_right_image', True)
-        print(f"self.use_right_image = {self.use_right_image}")
+        print(f"[mono_dataset.py]self.use_right_image = {self.use_right_image}")
         self.is_reproject = getattr(cfg.data, 'is_reproject', True) # if reproject 2d
 
     def _reproject(self, P2:np.ndarray, transformed_label:List[KittiObj]) -> Tuple[List[KittiObj], np.ndarray]:

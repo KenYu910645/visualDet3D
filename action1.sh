@@ -1,6 +1,5 @@
-
-./launchers/det_precompute.sh config/attention/coordatten.py train
-./launchers/train.sh config/attention/coordatten.py 1 coordatten
+./launchers/det_precompute.sh config/loss/noam_combine_regress_reg2048.py train
+./launchers/train.sh config/loss/noam_combine_regress_reg2048.py 1 noam_combine_regress_reg2048
 
 # Preprocessing
 # ./launchers/det_precompute.sh config/data_augumentation/baseline.py train

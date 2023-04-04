@@ -15,7 +15,8 @@ def evaluate(label_path="/home/hins/Desktop/M3D-RPN/data/kitti/training/label_2"
              label_split_file="val.txt",
              current_classes=[0],
              gpu=0,
-             dataset_type='kitti'):
+             dataset_type='kitti',
+             is_ap_crit=False):
     cuda.select_device(gpu)
     val_image_ids = _read_imageset_file(label_split_file)
     # dt_annos = get_label_annos(result_path)
@@ -27,5 +28,5 @@ def evaluate(label_path="/home/hins/Desktop/M3D-RPN/data/kitti/training/label_2"
 
     result_texts = []
     for current_class in current_classes:
-        result_texts.append(get_official_eval_result(gt_annos, dt_annos, current_class, dataset_type))
+        result_texts.append(get_official_eval_result(gt_annos, dt_annos, current_class, dataset_type, is_ap_crit = is_ap_crit))
     return result_texts

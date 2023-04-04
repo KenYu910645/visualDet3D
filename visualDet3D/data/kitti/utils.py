@@ -167,6 +167,7 @@ def write_result_to_file(base_result_path:str,
                          bbox_3d_state_3d=None, 
                          thetas=None, 
                          obj_types=['Car', 'Pedestrian', 'Cyclist'], 
+                         noam=None,
                          threshold=0.4):
     """Write Kitti prediction results of one frame to a file 
 
@@ -180,7 +181,7 @@ def write_result_to_file(base_result_path:str,
         thetas (np.ndarray, optional): [N]. Defaults to None.
         obj_types (List[str], optional): List of string if object type names. Defaults to ['Car', 'Pedestrian', 'Cyclist'].
         threshold (float, optional): Threshold for selection samples. Defaults to 0.4.
-    """    
+    """
     # name = "%06d" % index
     text_to_write = ""
     file = open(os.path.join(base_result_path, name + '.txt'), 'w')
@@ -199,12 +200,22 @@ def write_result_to_file(base_result_path:str,
         for i in range(len(bbox_2d)):
             if scores[i] < threshold:
                 continue
-            bbox = bbox_2d[i]
-            text_to_write += ('{} -1 -1 {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {} \n').format(
-                obj_types[i], bbox_3d_state_3d[i][-1], bbox[0], bbox[1], bbox[2], bbox[3],
-                bbox_3d_state_3d[i][4], bbox_3d_state_3d[i][3], bbox_3d_state_3d[i][5],
-                bbox_3d_state_3d[i][0], bbox_3d_state_3d[i][1], bbox_3d_state_3d[i][2],
-                thetas[i], scores[i])
+            if noam == None:
+                text_to_write += ('{} -1 -1 {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {} \n').format(
+                    obj_types[i], bbox_3d_state_3d[i][-1], 
+                    bbox_2d[i][0], bbox_2d[i][1], bbox_2d[i][2], bbox_2d[i][3],
+                    bbox_3d_state_3d[i][4], bbox_3d_state_3d[i][3], bbox_3d_state_3d[i][5],
+                    bbox_3d_state_3d[i][0], bbox_3d_state_3d[i][1], bbox_3d_state_3d[i][2],
+                    thetas[i], scores[i])
+            else:
+                text_to_write += ('{} -1 -1 {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n').format(
+                    obj_types[i], bbox_3d_state_3d[i][-1], 
+                    bbox_2d[i][0], bbox_2d[i][1], bbox_2d[i][2], bbox_2d[i][3],
+                    bbox_3d_state_3d[i][4], bbox_3d_state_3d[i][3], bbox_3d_state_3d[i][5],
+                    bbox_3d_state_3d[i][0], bbox_3d_state_3d[i][1], bbox_3d_state_3d[i][2],
+                    thetas[i], scores[i],
+                    noam[i][0], noam[i][1], noam[i][2], noam[i][3], 
+                    noam[i][4], noam[i][5], noam[i][6], noam[i][7])
     file.write(text_to_write)
     file.close()
 

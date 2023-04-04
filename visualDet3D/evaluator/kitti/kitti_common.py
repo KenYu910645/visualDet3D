@@ -291,8 +291,8 @@ def add_difficulty_to_annos(info):
 
 
 def get_label_anno(label_path):
-    annotations = {}
-    annotations.update({
+    annos = {}
+    annos.update({
         'name': [],
         'truncated': [],
         'occluded': [],
@@ -308,25 +308,27 @@ def get_label_anno(label_path):
     #     content = []
     # else:
     content = [line.strip().split(' ') for line in lines]
-    annotations['name'] = np.array([x[0] for x in content])
-    annotations['truncated'] = np.array([float(x[1]) for x in content])
-    annotations['occluded'] = np.array([int(x[2]) for x in content])
-    annotations['alpha'] = np.array([float(x[3]) for x in content])
-    annotations['bbox'] = np.array(
-        [[float(info) for info in x[4:8]] for x in content]).reshape(-1, 4)
+    annos['name']      = np.array([      x[0]  for x in content])
+    annos['truncated'] = np.array([float(x[1]) for x in content])
+    annos['occluded']  = np.array([int  (x[2]) for x in content])
+    annos['alpha']     = np.array([float(x[3]) for x in content])
+    annos['bbox']      = np.array([[float(info) for info in x[4:8]] for x in content]).reshape(-1, 4)
+    
     # dimensions will convert hwl format to standard lhw(camera) format.
-    annotations['dimensions'] = np.array(
+    annos['dimensions'] = np.array(
         [[float(info) for info in x[8:11]] for x in content]).reshape(
             -1, 3)[:, [2, 0, 1]]
-    annotations['location'] = np.array(
+    annos['location'] = np.array(
         [[float(info) for info in x[11:14]] for x in content]).reshape(-1, 3)
-    annotations['rotation_y'] = np.array(
+    annos['rotation_y'] = np.array(
         [float(x[14]) for x in content]).reshape(-1)
-    if len(content) != 0 and len(content[0]) == 16:  # have score
-        annotations['score'] = np.array([float(x[15]) for x in content])
+    
+    # spiderkiller change == 16 to >= 16 because need to use is_noam_loss
+    if len(content) != 0 and len(content[0]) >= 16:  # have score
+        annos['score'] = np.array([float(x[15]) for x in content])
     else:
-        annotations['score'] = np.zeros([len(annotations['bbox'])])
-    return annotations
+        annos['score'] = np.zeros([len(annos['bbox'])])
+    return annos
 
 # Spiderkiller change image_ids to str in order to make it compatible with nuscene_kitti
 def get_label_annos(label_folder, image_ids=None):

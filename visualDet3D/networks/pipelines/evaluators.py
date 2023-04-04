@@ -158,7 +158,7 @@ def test_one(cfg, index, fn_list, dataset, model, test_func, backprojector:BackP
     collated_data = dataset.collate_fn([data])
     height = collated_data[0].shape[2]
         
-    scores, bbox, obj_names = test_func(collated_data, model, None, cfg=cfg)
+    scores, bbox, obj_names, noam = test_func(collated_data, model, None, cfg=cfg)
     bbox_2d = bbox[:, 0:4]
     if bbox.shape[1] > 4: # run 3D
         bbox_3d_state = bbox[:, 4:] #[cx,cy,z,w,h,l,alpha, bot, top]
@@ -166,6 +166,7 @@ def test_one(cfg, index, fn_list, dataset, model, test_func, backprojector:BackP
 
         _, _, thetas = projector(bbox_3d_state_3d, bbox_3d_state_3d.new(P2))
 
+        # Recover bbox coordinate via crop and resize
         original_P = data['original_P']
         scale_x = original_P[0, 0] / P2[0, 0]
         scale_y = original_P[1, 1] / P2[1, 1]
@@ -178,7 +179,7 @@ def test_one(cfg, index, fn_list, dataset, model, test_func, backprojector:BackP
         bbox_2d[:, 0:4:2] *= scale_x
         bbox_2d[:, 1:4:2] *= scale_y
 
-        write_result_to_file(result_path, fn_list[index], scores, bbox_2d, bbox_3d_state_3d, thetas, obj_names)
+        write_result_to_file(result_path, fn_list[index], scores, bbox_2d, bbox_3d_state_3d, thetas, obj_names, noam)
     else:
         if "crop_top" in cfg.data.augmentation and cfg.data.augmentation.crop_top is not None:
             crop_top = cfg.data.augmentation.crop_top

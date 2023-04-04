@@ -15,9 +15,11 @@ from visualDet3D.networks.lib.look_ground import LookGround
 from visualDet3D.networks.lib.cbam import CBAM
 from visualDet3D.networks.lib.bam import BAM
 from visualDet3D.networks.lib.coordatten import CoordAtt
-from visualDet3D.networks.lib.pac import PerspectiveConv2d
+from visualDet3D.networks.lib.pac import PerspectiveConv2d, PerspectiveConv2d_cubic
+# from visualDet3D.networks.lib.pac_legacy import PerspectiveConv2d
 from visualDet3D.networks.lib.dcn import DeformableConv2d
-
+from visualDet3D.networks.lib.rfb import BasicRFB
+from visualDet3D.networks.lib.aspp import ASPP
 class AnchorBasedDetection3DHead(nn.Module):
     def __init__(self, num_features_in:int=1024,
                        num_classes:int=3,
@@ -33,11 +35,9 @@ class AnchorBasedDetection3DHead(nn.Module):
                        is_fpn_debug:bool=False,
                        use_channel_attention:bool=False,
                        use_spatial_attention:bool=False,
-                       is_two_stage:bool=False,
                        is_seperate_cz:bool=False,
                        use_bam:bool=False,
                        is_seperate_fpn_level_head:bool=False,
-                       is_seperate_2d:bool=False,
                        use_coordinate_attetion:bool=False,
                        is_fc_depth:bool=False,
                        cz_reg_dim:int=1024,
@@ -46,7 +46,16 @@ class AnchorBasedDetection3DHead(nn.Module):
                        num_pac_layer:int=0,
                        pac_mode:str="",
                        offset_3d:float=0.4,
-                       pad_mode:str="constant",):
+                       offset_2d:int=32,
+                       pad_mode:str="constant",
+                       adpative_P2:bool=False,
+                       cz_pred_mode:str="look_ground",
+                       is_noam_loss:bool=False,
+                       is_pac_bn_relu:bool=False,
+                       is_seperate_noam:bool=True,
+                       is_rfb:bool=False,
+                       is_aspp:bool=False,
+                       is_cubic_pac:bool=False):
 
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
@@ -66,11 +75,9 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.is_fpn_debug = is_fpn_debug
         self.use_channel_attention = use_channel_attention
         self.use_spatial_attention = use_spatial_attention
-        self.is_two_stage = is_two_stage
         self.is_seperate_cz = is_seperate_cz
         self.use_bam = use_bam
         self.is_seperate_fpn_level_head = is_seperate_fpn_level_head
-        self.is_seperate_2d = is_seperate_2d 
         self.use_coordinate_attetion = use_coordinate_attetion
         self.is_fc_depth = is_fc_depth
         self.cz_reg_dim  = cz_reg_dim
@@ -79,18 +86,28 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.num_pac_layer = num_pac_layer
         self.pac_mode = pac_mode
         self.offset_3d = offset_3d
+        self.offset_2d = offset_2d
         self.pad_mode = pad_mode
+        self.adpative_P2 = adpative_P2
+        self.cz_pred_mode = cz_pred_mode
+        self.is_noam_loss = is_noam_loss
+        self.is_pac_bn_relu = is_pac_bn_relu
+        self.is_seperate_noam = is_seperate_noam
+        self.is_rfb           = is_rfb
+        self.is_aspp           = is_aspp
+        self.is_cubic_pac    = is_cubic_pac
+        
+        
+        self.loss_cfg.iou_type = getattr(self.loss_cfg, 'iou_type', "")
         
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
         print(f"iou_type = {self.loss_cfg.iou_type}")
         print(f"self.is_fpn_debug = {self.is_fpn_debug}")
         print(f"self.use_channel_attention = {self.use_channel_attention}")
         print(f"self.use_spatial_attention = {self.use_spatial_attention}")
-        print(f"self.is_two_stage = {self.is_two_stage}")
         print(f"self.is_seperate_cz = {self.is_seperate_cz}")
         print(f"self.use_bam = {self.use_bam}")
         print(f"self.is_seperate_fpn_level_head = {self.is_seperate_fpn_level_head}")
-        print(f"is_seperate_2d = {self.is_seperate_2d}")
         print(f"use_coordinate_attetion = {self.use_coordinate_attetion}")
         print(f"is_fc_depth = {self.is_fc_depth}")
         print(f"cz_reg_dim = {self.cz_reg_dim}")
@@ -98,8 +115,17 @@ class AnchorBasedDetection3DHead(nn.Module):
         print(f"num_dcnv2 = {self.num_dcnv2}")
         print(f"self.num_pac_layer=  {self.num_pac_layer}")
         print(f"self.pac_mode=  {self.pac_mode}")
+        print(f"adpative_P2 = {self.adpative_P2}")
         print(f"self.offset_3d=  {self.offset_3d}")
         print(f"self.pad_mode=  {self.pad_mode}")
+        print(f"self.cz_pred_mode=  {self.cz_pred_mode}")
+        print(f"self.is_noam_loss=  {self.is_noam_loss}")
+        print(f"self.offset_2d = {self.offset_2d}")
+        print(f"is_pac_bn_relu = {self.is_pac_bn_relu}")
+        print(f"is_seperate_noam = {self.is_seperate_noam}")
+        print(f"is_rfb = {self.is_rfb}")
+        print(f"is_aspp = {self.is_aspp}")
+        print(f"is_cubic_pac = {self.is_cubic_pac}")
         
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -111,7 +137,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.n_cover_gt = 0
         self.n_assign_anchor = 0
 
-    def init_layers(self, num_features_in,
+    def init_layers(self, num_features_in, # This function will be overwritten
                           num_anchors:int,
                           num_cls_output:int,
                           num_reg_output:int,
@@ -148,7 +174,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.reg_feature_extraction[-2].weight.data.fill_(0)
         self.reg_feature_extraction[-2].bias.data.fill_(0)
 
-    def forward(self, inputs):
+    def forward(self, inputs): # This function will be overwritten
         cls_preds = self.cls_feature_extraction(inputs['features'])
         reg_preds = self.reg_feature_extraction(inputs['features'])
 
@@ -157,22 +183,23 @@ class AnchorBasedDetection3DHead(nn.Module):
     def build_loss(self, focal_loss_gamma=0.0, balance_weight=[0], L1_regression_alpha=9, **kwargs):
         self.focal_loss_gamma = focal_loss_gamma
         self.register_buffer("balance_weights", torch.tensor(balance_weight, dtype=torch.float32))
-        self.loss_cls = SigmoidFocalLoss(gamma=focal_loss_gamma, balance_weights=self.balance_weights)
-        self.loss_bbox = ModifiedSmoothL1Loss(L1_regression_alpha)
+        self.focal_loss = SigmoidFocalLoss(gamma=focal_loss_gamma, balance_weights=self.balance_weights)
+        self.smooth_L1_loss = ModifiedSmoothL1Loss(L1_regression_alpha)
 
-        if self.loss_cfg.iou_type == "iou":
-            self.loss_iou = IoULoss()
-        elif self.loss_cfg.iou_type == "diou":
-            self.loss_iou = DIoULoss()
-        elif self.loss_cfg.iou_type == "ciou":
-            self.loss_iou = CIoULoss()
-        else:
-            self.loss_iou = IoULoss()
+        # TODO
+        # if self.loss_cfg.iou_type == "iou":
+        #     self.loss_iou = IoULoss()
+        # elif self.loss_cfg.iou_type == "diou":
+        #     self.loss_iou = DIoULoss()
+        # elif self.loss_cfg.iou_type == "ciou":
+        #     self.loss_iou = CIoULoss()
+        # else:
+        #     self.loss_iou = IoULoss()
 
         regression_weight = kwargs.get("regression_weight", [1 for _ in range(self.num_regression_loss_terms)]) #default 12 only use in 3D
         self.register_buffer("regression_weight", torch.tensor(regression_weight, dtype=torch.float))
 
-        self.alpha_loss = nn.BCEWithLogitsLoss(reduction='none')
+        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
 
     def _assign(self, anchor, annotation, 
                     bg_iou_threshold=0.0,
@@ -275,8 +302,8 @@ class AnchorBasedDetection3DHead(nn.Module):
         '''
         This function calcuate difference between anchor and ground true -> encode into format that network should be predicting
         
-        # print(f"pos_bboxes = {pos_bboxes.shape}") # [40, 4]
-        # print(f"pos_gt_bboxes = {pos_gt_bboxes.shape}") # [40, 12]
+        # print(f"pos_2dbox = {pos_2dbox.shape}") # [40, 4]
+        # print(f"pos_anno = {pos_anno.shape}") # [40, 12]
         # print(f"selected_anchor_3d = {selected_anchor_3d.shape}") # [40, 6, 2]
 
         Input: 
@@ -334,16 +361,16 @@ class AnchorBasedDetection3DHead(nn.Module):
         targets = torch.stack((targets_dx, targets_dy, targets_dw, targets_dh, 
                          targets_cdx, targets_cdy, targets_cdz,
                          targets_cd_sin, targets_cd_cos,
-                         targets_w3d, targets_h3d, targets_l3d), dim=1)
+                         targets_w3d, targets_h3d, targets_l3d), dim=1) # 12
 
         stds = targets.new([0.1, 0.1, 0.2, 0.2, 0.1, 0.1, 1, 1, 1, 1, 1, 1])
 
         targets = targets.div_(stds)
 
-        targets_alpha_cls = (torch.cos(sampled_gt_bboxes[:, 11:12]) > 0).float()
-        return targets, targets_alpha_cls #[N, 4]
+        hdg_target = (torch.cos(sampled_gt_bboxes[:, 11:12]) > 0).float()
+        return targets, hdg_target #[N, 4]
 
-    def _decode(self, boxes, deltas, anchors_3d_mean_std, label_index, alpha_score):
+    def _decode(self, boxes, deltas, anchors_3d_mean_std, label_index, alpha_score, cz_deltas = None):
         '''
         Input: 
             * N_D: number of detection 
@@ -403,24 +430,27 @@ class AnchorBasedDetection3DHead(nn.Module):
         pred_cx1 = ctr_x + cdx * widths
         pred_cy1 = ctr_y + cdy * heights
 
-        # Get z
-        pred_z   = deltas[...,6] * selected_mean_std[:, 0, 1] + selected_mean_std[:,0, 0]  #[N, 6]
-        
-        # Get alpha
-        pred_sin = deltas[...,7] * selected_mean_std[:, 1, 1] + selected_mean_std[:,1, 0] 
-        pred_cos = deltas[...,8] * selected_mean_std[:, 2, 1] + selected_mean_std[:,2, 0] 
+        if cz_deltas != None:
+            pred_z   = cz_deltas[...,0] * selected_mean_std[:, 0, 1] + selected_mean_std[:,0, 0]  #[N, 6]
+            pred_sin = deltas[...,6]    * selected_mean_std[:, 1, 1] + selected_mean_std[:,1, 0] 
+            pred_cos = deltas[...,7]    * selected_mean_std[:, 2, 1] + selected_mean_std[:,2, 0]
+            pred_w   = deltas[...,8]    * selected_mean_std[:, 3, 1] + selected_mean_std[:,3, 0]
+            pred_h   = deltas[...,9]    * selected_mean_std[:, 4, 1] + selected_mean_std[:,4, 0]
+            pred_l   = deltas[...,10]   * selected_mean_std[:, 5, 1] + selected_mean_std[:,5, 0]
+        else:
+            pred_z   = deltas[...,6] * selected_mean_std[:, 0, 1] + selected_mean_std[:,0, 0]  #[N, 6]
+            pred_sin = deltas[...,7] * selected_mean_std[:, 1, 1] + selected_mean_std[:,1, 0] 
+            pred_cos = deltas[...,8] * selected_mean_std[:, 2, 1] + selected_mean_std[:,2, 0]
+            pred_w   = deltas[...,9]  * selected_mean_std[:,3, 1] + selected_mean_std[:,3, 0]
+            pred_h   = deltas[...,10] * selected_mean_std[:,4, 1] + selected_mean_std[:,4, 0]
+            pred_l   = deltas[...,11] * selected_mean_std[:,5, 1] + selected_mean_std[:,5, 0]
+
         pred_alpha = torch.atan2(pred_sin, pred_cos) / 2.0
-
-        # Get dimension of 3d bbox
-        pred_w = deltas[...,9]  * selected_mean_std[:,3, 1] + selected_mean_std[:,3, 0]
-        pred_h = deltas[...,10] * selected_mean_std[:,4, 1] + selected_mean_std[:,4, 0]
-        pred_l = deltas[...,11] * selected_mean_std[:,5, 1] + selected_mean_std[:,5, 0]
-
+        
         pred_boxes = torch.stack([pred_boxes_x1, pred_boxes_y1, pred_boxes_x2, pred_boxes_y2,
                                   pred_cx1, pred_cy1, pred_z,
                                   pred_w, pred_h, pred_l, pred_alpha], dim=1)
         
-        # Use predicted alpha heading to revise ????? TODO
         pred_boxes[alpha_score[:, 0] < 0.5, -1] += np.pi
 
         return pred_boxes, mask
@@ -441,15 +471,16 @@ class AnchorBasedDetection3DHead(nn.Module):
         pos_assigned_gt_inds = assignment_result['assigned_gt_inds'] - 1
 
         if gt_bboxes.numel() == 0:
-            pos_gt_bboxes = gt_bboxes.new_zeros([0, 4])
+            pos_anno = gt_bboxes.new_zeros([0, 4])
         else:
-            pos_gt_bboxes = gt_bboxes[pos_assigned_gt_inds[pos_inds], :]
+            pos_anno = gt_bboxes[pos_assigned_gt_inds[pos_inds], :]
+        
         return_dict = dict(
             pos_inds = pos_inds,
             neg_inds = neg_inds,
-            pos_bboxes = anchors[pos_inds],
-            neg_bboxes = anchors[neg_inds],
-            pos_gt_bboxes = pos_gt_bboxes,
+            pos_2dbox = anchors[pos_inds],
+            neg_2dbox = anchors[neg_inds],
+            pos_anno = pos_anno,
             pos_assigned_gt_inds = pos_assigned_gt_inds[pos_inds],
         )
         return return_dict
@@ -502,12 +533,12 @@ class AnchorBasedDetection3DHead(nn.Module):
 
         return selected_mask, selected_anchor_3d
 
-    def get_bboxes(self, cls_scores, reg_preds, anchors, P2s, img_batch=None):
+    def get_bboxes(self, preds, anchors, P2s, img_batch=None):
         '''
         Input: 
             * B: batch size
             * N_A: number of anchor
-            cls_scores - [B, N_A, 2] - [1, 46080, 2]
+            cls_preds - [B, N_A, 2] - [1, 46080, 2]
                 prediction of confidence score
             reg_preds - [B, N_A, 12] - [1, 46080, 12]
                 prediction of boudning box
@@ -524,8 +555,14 @@ class AnchorBasedDetection3DHead(nn.Module):
             label - [N_D] - [5]
                 class index, show category of detections 
         '''
+        cls_preds = preds['cls_preds']
+        reg_preds = preds['reg_preds']
+        dep_preds = preds['dep_preds']
+        nom_preds = preds['nom_preds']
+        if self.is_noam_loss and (not self.is_seperate_noam):
+            nom_preds = reg_preds[:, :, 12:]
         
-        assert cls_scores.shape[0] == 1 # batch == 1
+        assert cls_preds.shape[0] == 1 # batch == 1
         
         # Parameters
         score_thr = getattr(self.test_cfg, 'score_thr', 0.5) # score_thr=0.75 in config.py
@@ -534,44 +571,53 @@ class AnchorBasedDetection3DHead(nn.Module):
         nms_iou_thr  = getattr(self.test_cfg, 'nms_iou_thr', 0.5) # nms_iou_thr=0.5
         is_post_opt = getattr(self.test_cfg, 'post_optimization', False) # post_optimization=True
 
-
-        cls_scores = cls_scores.sigmoid()
-        cls_score = cls_scores[0][..., 0:self.num_classes]
-        alpha_score = cls_scores[0][..., self.num_classes:self.num_classes+1]
-        reg_pred  = reg_preds[0]
+        cls_preds= cls_preds.sigmoid()
+        cls_pred = cls_preds[0][..., 0:self.num_classes]
+        hdg_pred = cls_preds[0][..., self.num_classes:self.num_classes+1]
+        reg_pred = reg_preds[0]
+        if self.is_seperate_cz: dep_preds = dep_preds[0]
+        if self.is_noam_loss  : nom_preds = nom_preds[0]
         
-        anchor = anchors['anchors'][0] #[N, 4]
-        anchor_mean_std_3d = anchors['anchor_mean_std_3d'] #[N, K, 2]
+        ank_2dbbox = anchors['anchors'][0] #[N, 4]
+        ank_zscwhl = anchors['anchor_mean_std_3d'] #[N, K, 2]
         useful_mask = anchors['mask'][0] #[N, ]
-
-        anchor = anchor[useful_mask]
-        cls_score = cls_score[useful_mask]
-        alpha_score = alpha_score[useful_mask]
-        reg_pred = reg_pred[useful_mask]
-        anchor_mean_std_3d = anchor_mean_std_3d[useful_mask] #[N, K, 2]
+        
+        ank_2dbbox = ank_2dbbox[useful_mask]
+        ank_zscwhl = ank_zscwhl[useful_mask]
+        cls_pred   = cls_pred  [useful_mask]
+        hdg_pred   = hdg_pred  [useful_mask]
+        reg_pred   = reg_pred  [useful_mask]
+        if self.is_seperate_cz: dep_preds = dep_preds[useful_mask]
+        if self.is_noam_loss  : nom_preds = nom_preds[useful_mask]
 
         # Find highest score in all classes
-        max_score, label = cls_score.max(dim=-1) 
+        max_score, label = cls_pred.max(dim=-1) 
         high_score_mask = (max_score > score_thr)
-
-        anchor      = anchor[high_score_mask, :]
-        anchor_mean_std_3d = anchor_mean_std_3d[high_score_mask, :]
-        cls_score   = cls_score[high_score_mask, :]
-        alpha_score = alpha_score[high_score_mask, :]
-        reg_pred    = reg_pred[high_score_mask, :]
-        max_score   = max_score[high_score_mask]
-        label       = label[high_score_mask]
-
-        bboxes, mask = self._decode(anchor, reg_pred, anchor_mean_std_3d, label, alpha_score)
-
+        #
+        ank_2dbbox = ank_2dbbox[high_score_mask, :]
+        ank_zscwhl = ank_zscwhl[high_score_mask, :]
+        cls_pred   = cls_pred  [high_score_mask, :]
+        hdg_pred   = hdg_pred  [high_score_mask, :]
+        reg_pred   = reg_pred  [high_score_mask, :] # [n_det, 12/20]
+        max_score  = max_score [high_score_mask]
+        label      = label     [high_score_mask]
+        if self.is_seperate_cz: dep_preds = dep_preds[high_score_mask]
+        if self.is_noam_loss  : nom_preds = nom_preds[high_score_mask]
+        #
+        bboxes, mask = self._decode(ank_2dbbox, reg_pred, ank_zscwhl, label, hdg_pred, cz_deltas=dep_preds)
+        
         # Clip 2d bbox's boundary if exceed image.shape
         if img_batch is not None:
             bboxes = self.clipper(bboxes, img_batch)
         
-        cls_score = cls_score[mask]
+        cls_pred  = cls_pred [mask]
         max_score = max_score[mask]
-        bboxes    = bboxes[mask]
+        bboxes    = bboxes   [mask]
+        if self.is_noam_loss: nom_preds = nom_preds[mask]
 
+        ###############################
+        ### Non-Maxiumum Supression ###
+        ###############################
         # print(f"bboxes before nms = {bboxes.shape}") # [184, 11]
         if cls_agnostic:
             keep_inds = nms(bboxes[:, :4], max_score, nms_iou_thr)
@@ -580,272 +626,290 @@ class AnchorBasedDetection3DHead(nn.Module):
             nms_bbox = bboxes[:, :4] + label.float().unsqueeze() * (max_coordinate)
             keep_inds = nms(nms_bbox, max_score, nms_iou_thr)
 
-        bboxes      = bboxes[keep_inds]
+        bboxes      = bboxes   [keep_inds]
         max_score   = max_score[keep_inds]
-        label       = label[keep_inds]
+        label       = label    [keep_inds]
+        if self.is_noam_loss: nom_preds = nom_preds[keep_inds]
         # print(f"bboxes after nms = {bboxes.shape}") # [1, 11]
-        
+
+        ####################
+        ### Post Process ###
+        ####################
         if is_post_opt:
             max_score, bboxes, label = self._post_process(max_score, bboxes, label, P2s)
+        # print(bboxes.shape) # [n_det, 11] # [x1, y1, x2, y2, cx, cy, cz, w, h, l, alpha]
+        
+        if self.is_noam_loss:
+            return max_score, bboxes, label, nom_preds
+        else:
+            return max_score, bboxes, label, None
 
-        # print(f"Number of detection = {bboxes.shape[0]}")
-        return max_score, bboxes, label
+    def loss(self, preds, anchors, annos, P2s):
+        '''
+        Input:
+            preds is the preds result of the network:
+                preds['cls_preds']  : [B, num_anchor, 2]
+                preds['reg_preds']  : [B, num_anchor, 12]
+                preds['dep_preds']   : [B, num_anchor, 1] or None 
+                preds['nom_preds'] : [B, num_anchor, 8] or None
+            anchors
+                anchors['anchors'] : [1, num_anchor, 4]
+                anchors['anchor_mean_std_3d'] : [num_anchor, 1, 6, 2]
+                # [z,  sinalpha, cosalpha, w, h, l]
+            annos: [B, max_lenght_label, 16], annotataions are ground trues # [8, 12, 16]
+                [x1, y1, x2, y2, cls_index, cx, cy, z, w, h, l, alpha, x3d, y3d, z3d, rot_y]
+        '''
+        # cls_preds and reg_preds are predicted by netowrk 
+        cls_preds = preds['cls_preds'] # [B, num_anchor, 2]
+        reg_preds = preds['reg_preds'] # [B, num_anchor, 12]
+        dep_preds = preds['dep_preds'] # [B, num_anchor, 1] or None 
+        nom_preds = preds['nom_preds'] # [B, num_anchor, 8] or None 
 
-    def loss(self, cls_scores, reg_preds, anchors, annotations, P2s):
-        # cls_scores and reg_preds are predicted by netowrk 
         # annotataions are ground trues
-        # print(f"anchors = {anchors['anchors'].shape}") # torch.Size([1, 46080, 4])
-        batch_size = cls_scores.shape[0]
-
-        anchor = anchors['anchors'][0] #[N, 4]
-        anchor_mean_std_3d = anchors['anchor_mean_std_3d']
+        ank_2dbbox = anchors['anchors'][0] # [num_anchor, 4]
+        ank_zscwhl = anchors['anchor_mean_std_3d'] # [num_anchor, 1, 6, 2]
+        
         cls_loss = []
         reg_loss = []
         iou_loss = []
-        number_of_positives = []
-        for j in range(batch_size):
+        dep_loss = []
+        nom_loss = []
+        n_pos_list = []
+        for j in range(cls_preds.shape[0]): # j is batch index
             
-            reg_pred  = reg_preds[j]
-            cls_score = cls_scores[j][..., 0:self.num_classes]
-            alpha_score = cls_scores[j][..., self.num_classes:self.num_classes+1]
-
-            # selected by mask
+            reg_pred = reg_preds[j] # [B, 12/20]
+            cls_pred = cls_preds[j][..., 0:self.num_classes] # [B, 1]
+            hdg_pred = cls_preds[j][..., self.num_classes:self.num_classes+1] # [B, 1], Predict heading of the object (front or back)
+            if dep_preds != None: dep_pred = dep_preds[j]
+            if nom_preds != None: nom_pred = nom_preds[j]
+            anno_j = annos[j, :, :] # [n_gts, 16/24]
+            
+            # Filter anchors by mask
             useful_mask = anchors['mask'][j] #[N]
-            anchor_j = anchor[useful_mask]
-            anchor_mean_std_3d_j = anchor_mean_std_3d[useful_mask]
-            reg_pred = reg_pred[useful_mask]
-            cls_score = cls_score[useful_mask]
-            alpha_score = alpha_score[useful_mask]
-
-            # only select useful bbox_annotations
-            bbox_annotation = annotations[j, :, :]
-            bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]#[k]
-
-            if len(bbox_annotation) == 0:
+            ank_2dbbox_j         = ank_2dbbox         [useful_mask]
+            ank_zscwhl_j         = ank_zscwhl         [useful_mask]
+            reg_pred             = reg_pred           [useful_mask]
+            cls_pred             = cls_pred           [useful_mask]
+            hdg_pred             = hdg_pred           [useful_mask]
+            if dep_preds != None: dep_pred = dep_pred [useful_mask]
+            if nom_preds != None: nom_pred = nom_pred [useful_mask]
+            
+            # Use only useful annotation
+            anno_j = anno_j[anno_j[:, 4] != -1]
+            
+            if len(anno_j) == 0: # If this image doesn't contain any ground true, just skip it
                 cls_loss.append(torch.tensor(0).cuda().float())
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
-                iou_loss.append(0.0)
-                number_of_positives.append(0)
+                # iou_loss.append(0.0) # TODO, iou_loss is bad 
+                dep_loss.append(reg_preds.new_zeros(1))
+                nom_loss.append(reg_preds.new_zeros(8))
+                n_pos_list.append(0)
                 continue
             
-            # Filter 46080 anchors to 18974 anchors
-            # print(f"Filter {anchor.shape[0]} anchors to {anchor_j.shape[0]} anchors")
-
-            # print(f"anchor_j.shape = {anchor_j.shape}") # [7548, 4]
-            # print(f"bbox_annotation.shape = {bbox_annotation.shape}") # [A, 12], where A is how many postive gts does this image have 
-
             # This is like retinanet's and YOLO's MaxIouAssignerm 
-            assignement_result_dict = self._assign(anchor_j, bbox_annotation, **self.loss_cfg) # doesn't involve prediction
+            assign_dict = self._assign(ank_2dbbox_j, anno_j, **self.loss_cfg) # doesn't involve prediction
+            # print(f"assign_dict['num_gt'] = {assign_dict['num_gt']}") # 4 
+            # print(f"assign_dict['assigned_gt_inds'] = {assign_dict['assigned_gt_inds'].shape}") # [7548]
+            # print(assign_dict['assigned_gt_inds'].unique()) # -1,  0,  1, 0 means negative, 1 meams positive, 
+            # print(f"assign_dict['max_overlaps'] = {assign_dict['max_overlaps'].shape}") # [7548]
+            # print(f"assign_dict['labels'] = {assign_dict['labels'].shape}") # [7548]
             
-            # print(f"assignement_result_dict['num_gt'] = {assignement_result_dict['num_gt']}") # 4 
-            # print(f"assignement_result_dict['assigned_gt_inds'] = {assignement_result_dict['assigned_gt_inds'].shape}") # [7548]
-        
             # This is for checking GAC's anchor'a miss rate
-            unique, counts = np.unique(assignement_result_dict['assigned_gt_inds'].cpu().numpy(), return_counts=True)
-            anchor_assign = dict(zip(unique, counts)) # {-1: 100, 0: 3720, 1: 40}
+            # unique, counts = np.unique(assign_dict['assigned_gt_inds'].cpu().numpy(), return_counts=True)
+            # anchor_assign = dict(zip(unique, counts)) # {-1: 100, 0: 3720, 1: 40}
+            
+            sample_dict    = self._sample(assign_dict, ank_2dbbox_j, anno_j)
+            # sample_dict['pos_inds']: [n_pos]
+            # sample_dict['neg_inds']: [n_neg]
+            # sample_dict['pos_2dbox']: [n_pos, 4]
+            # sample_dict['neg_2dbox']: [n_neg, 4]
+            # sample_dict['pos_anno']: [n_pos, 16/24]
+            # sample_dict['pos_assigned_gt_inds']: [n_pos]
 
-            '''
-            for gt_idx in range(bbox_annotation.shape[0]):
-                if gt_idx+1 in anchor_assign:
-                    self.n_cover_gt += 1
-                    self.n_assign_anchor += anchor_assign[gt_idx+1]
-                else:
-                    self.n_miss_gt += 1
-            print(f"Number of missed groundtrue = {self.n_miss_gt}")
-            print(f"Number of covered groundtrue = {self.n_cover_gt}")
-            print(f"Avg number of anchor for every gt = {self.n_assign_anchor / self.n_cover_gt}")
-            '''
-
-            # print(f"assignement_result_dict['max_overlaps'] = {assignement_result_dict['max_overlaps'].shape}") # [7548]
-            # print(f"assignement_result_dict['labels'] = {assignement_result_dict['labels'].shape}") # [7548]
-            # print(assignement_result_dict['assigned_gt_inds'].unique()) # -1,  0,  1, 0 means negative, 1 meams positive, 
-
-            # I think this sample function does nothing
-            sampling_result_dict    = self._sample(assignement_result_dict, anchor_j, bbox_annotation) # doesn't involve prediction
-
-            # print(f"n_pos, n_neg = {(len(sampling_result_dict['pos_inds']), len(sampling_result_dict['neg_inds']))}")
-            # print(f"sampling_result_dict['pos_inds'] = {sampling_result_dict['pos_inds']}")
-            # print(f"sampling_result_dict['pos_bboxes'] = {sampling_result_dict['pos_bboxes'].shape}") # [40, 4], pos_bboxes are anchor that is assign to groundtrue 
-            # print(f"sampling_result_dict['neg_bboxes'] = {sampling_result_dict['neg_bboxes'].shape}") # [3720, 4]
-            # print(f"sampling_result_dict['pos_gt_bboxes'] = {sampling_result_dict['pos_gt_bboxes'].shape}") # [40, 12]
-            # print(f"sampling_result_dict['pos_assigned_gt_inds'] = {sampling_result_dict['pos_assigned_gt_inds'].shape}") # [40]
-            num_valid_anchors = anchor_j.shape[0]
-            # print(f"num_valid_anchors = {num_valid_anchors}")
-            labels = anchor_j.new_full((num_valid_anchors, self.num_classes),
+            labels = ank_2dbbox_j.new_full((ank_2dbbox_j.shape[0], self.num_classes),
                                     -1, # -1 not computed, binary for each class
                                     dtype=torch.float)
 
-            pos_inds = sampling_result_dict['pos_inds']
-            neg_inds = sampling_result_dict['neg_inds']
+            pos_inds = sample_dict['pos_inds']
+            neg_inds = sample_dict['neg_inds']
             #
             n_pos = pos_inds.shape[0]
             n_neg = neg_inds.shape[0]
             # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078) n_pos, n_neg = (40, 3720)
 
             if len(pos_inds) > 0:
-                pos_assigned_gt_label = bbox_annotation[sampling_result_dict['pos_assigned_gt_inds'], 4].long()
+                pos_assigned_gt_label = anno_j[sample_dict['pos_assigned_gt_inds'], 4].long()
                 
                 selected_mask, selected_anchor_3d = self._get_anchor_3d(
-                    sampling_result_dict['pos_bboxes'],
-                    anchor_mean_std_3d_j[pos_inds],
+                    sample_dict['pos_2dbox'],
+                    ank_zscwhl_j[pos_inds],
                     pos_assigned_gt_label,
                 )
                 if len(selected_anchor_3d) > 0:
-                    pos_inds = pos_inds[selected_mask]
-                    pos_bboxes    = sampling_result_dict['pos_bboxes'][selected_mask]
-                    pos_gt_bboxes = sampling_result_dict['pos_gt_bboxes'][selected_mask] # pos_gt_bbox is the corresspondent target for that entry of postive bbox
-                    pos_assigned_gt = sampling_result_dict['pos_assigned_gt_inds'][selected_mask]
-                    # torch.set_printoptions(threshold=10_000)
-
-                    # print(f"pos_bboxes = {pos_bboxes.shape}") # [40, 4]
-                    # print(f"pos_gt_bboxes = {pos_gt_bboxes.shape}") # [40, 12]
-                    # print(f"selected_anchor_3d = {selected_anchor_3d.shape}") # [40, 6, 2]
                     
+                    # Filter out anchor that z < 0 
+                    pos_inds  = pos_inds[selected_mask]
+                    pos_2dbox = sample_dict['pos_2dbox'][selected_mask]
+                    pos_anno  = sample_dict['pos_anno'][selected_mask]
+                    # pos_assigned_gt = sample_dict['pos_assigned_gt_inds'][selected_mask]
+                    
+                    # Output anchor for debugging
                     # import pickle
+                    # torch.set_printoptions(threshold=10_000)
                     # with open("GAC_head_anchor_2D.pkl", 'wb') as f:
-                    #     pickle.dump(pos_bboxes.detach().cpu().numpy(), f)
+                    #     pickle.dump(pos_2dbox.detach().cpu().numpy(), f)
                     # with open("GAC_head_anchor_3D.pkl", 'wb') as f:
                     #     pickle.dump(selected_anchor_3d.detach().cpu().numpy(), f)
                     # print(f"Output anchor's information to GAC_head_anchor_2D.pkl and GAC_head_anchor_3D.pkl")
 
-                    pos_bbox_targets, targets_alpha_cls = self._encode(
-                        pos_bboxes, pos_gt_bboxes, selected_anchor_3d
-                    ) #[N, 12], [N, 1]
+                    ##############
+                    ### Encode ###
+                    ##############
+                    reg_target, hdg_target = self._encode(pos_2dbox, pos_anno, selected_anchor_3d)
+                    # print(f"reg_target = {reg_target.shape}") # [n_pos, 12]
+                    # print(f"hdg_target = {hdg_target.shape}") # [n_pos, 1]
+                    
                     label_index = pos_assigned_gt_label[selected_mask]
                     labels[pos_inds, :] = 0
                     labels[pos_inds, label_index] = 1
 
-                    pos_anchor = anchor[pos_inds]
-                    pos_alpha_score = alpha_score[pos_inds]
-
-                    # print(f"self.decode_before_loss = {self.decode_before_loss}") # False 
-                    if self.decode_before_loss:
-                        pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
-                        pos_target_decoded, _     = self._decode(pos_anchor, pos_bbox_targets,  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
-                        reg_loss_j = self.loss_bbox(pos_prediction_decoded[mask], pos_target_decoded[mask])
-                        alpha_loss_j = self.alpha_loss(pos_alpha_score[mask], targets_alpha_cls[mask])
-                        loss_j = torch.cat([reg_loss_j, alpha_loss_j], dim=1) * self.regression_weight #[N, 12]
-                        reg_loss.append(loss_j.mean(dim=0)) #[13]
-                        number_of_positives.append(bbox_annotation.shape[0])
+                    ######################
+                    ### Get Depth Loss ###
+                    ######################
+                    if self.is_seperate_cz:
+                        dep_target = reg_target[:, 6:6+1] # [697, 1] 
+                        if self.cz_pred_mode == "look_ground" or self.cz_pred_mode == "fc":
+                            dep_loss_j = self.smooth_L1_loss(dep_target, dep_pred[pos_inds]) # [141, 1]
+                        
+                        elif self.cz_pred_mode == "oridinal_loss":
+                            raise NotImplementedError # TODO
+                        
+                        # print(f"dep_loss_j.requires_grad = {dep_loss_j.requires_grad}")
+                        dep_loss.append( dep_loss_j.mean(dim=0) * 3) # TODO, this 3 ratio is derived from regersssion_weight
+                        # 
+                        reg_target = torch.cat((reg_target[:, :6], reg_target[:, 6+1:]), dim=1) # [694, 11]
+                    
+                    ###########################
+                    ### Get Regression Loss ###
+                    ###########################
+                    # print(f"reg_target = {reg_target.shape}") # [628, 12]
+                    # print(f"reg_pred[pos_inds] = {reg_pred[pos_inds].shape}") # [628, 20]
+                    if self.is_noam_loss and (not self.is_seperate_noam):
+                        reg_loss_j = self.smooth_L1_loss(reg_target      ,   reg_pred[pos_inds][:, :12])
+                        nom_loss_j = self.smooth_L1_loss(pos_anno[:, 16:],   reg_pred[pos_inds][:, 12:])
+                        hdg_loss_j = self.bce_loss      (hdg_pred[pos_inds], hdg_target)
+                        reg_loss.append( (torch.cat([reg_loss_j, hdg_loss_j, nom_loss_j], dim=1)*self.regression_weight).mean(dim=0) )
                     else:
-                        # Get regression loss
-                        reg_loss_j = self.loss_bbox(pos_bbox_targets, reg_pred[pos_inds]) # This is the first time, loss() used prediction result
-                        alpha_loss_j = self.alpha_loss(pos_alpha_score, targets_alpha_cls)
-                        loss_j = torch.cat([reg_loss_j, alpha_loss_j], dim=1) * self.regression_weight #[N, 13]
-                        # print(f"loss_j = {loss_j.shape}") # [647, 13]
-                        reg_loss.append(loss_j.mean(dim=0)) #[13]
-                        number_of_positives.append(bbox_annotation.shape[0])
-
-                    # Get IOU loss 
-                    # print(f"pos_gt_bboxes[:, :4] = {pos_gt_bboxes[:, :4].shape}")
-                    pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
-                    pos_target_decoded, _        = self._decode(pos_anchor, pos_bbox_targets,    anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
-                    # print(f"pos_prediction_decoded[:, :4] = {pos_prediction_decoded[mask, :4]}")
-                    # print(f"pos_target_decoded[:, :4] = {pos_target_decoded[mask, :4]}")
-                    loss_iou_j = self.loss_iou(pos_prediction_decoded[mask, :4], pos_target_decoded[mask, :4])
-                    iou_loss.append(loss_iou_j.mean().item())
-
+                        reg_loss_j = self.smooth_L1_loss(reg_target, reg_pred[pos_inds]) # This is the first time, loss() used prediction result
+                        hdg_loss_j = self.bce_loss      (hdg_pred[pos_inds], hdg_target)
+                        reg_loss.append( (torch.cat([reg_loss_j, hdg_loss_j            ], dim=1)*self.regression_weight).mean(dim=0) )
+                    
+                    ####################
+                    ### Get IOU Loss ###
+                    ####################
+                    # pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  ank_zscwhl_j[pos_inds], label_index, pos_alpha_score)
+                    # pos_target_decoded, _        = self._decode(pos_anchor, reg_target,    ank_zscwhl_j[pos_inds], label_index, pos_alpha_score)
+                    # loss_iou_j = self.loss_iou(pos_prediction_decoded[mask, :4], pos_target_decoded[mask, :4])
+                    # iou_loss.append(loss_iou_j.mean().item())
+                    
+                    #####################
+                    ### Get NOAM Loss ###
+                    #####################
+                    if self.is_noam_loss and self.is_seperate_noam:
+                        nom_loss_j = self.smooth_L1_loss(pos_anno[:, 16:], nom_pred[pos_inds]) # [141, 1]
+                        nom_loss.append( nom_loss_j.mean(dim=0) * 3)
+                    
+                    n_pos_list.append(anno_j.shape[0])
             else:
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
-                number_of_positives.append(bbox_annotation.shape[0])
-                iou_loss.append(0.0)
+                n_pos_list.append(anno_j.shape[0])
+                # iou_loss.append(0.0)
+                if dep_preds != None: dep_loss.append(reg_preds.new_zeros(1))
+                if nom_preds != None: nom_loss.append(reg_preds.new_zeros(8))
 
             if len(neg_inds) > 0:
                 labels[neg_inds, :] = 0
             
-            # print(f"cls_score.mean() = {cls_score.mean()}")
-            # print(f"means of  positive = {cls_score[ cls_score > 0 ].mean()}")
-            # # print(f"Min of  positive = {cls_score[ cls_score > 0 ]}")
-            # print(f"Number of positive in cls_pred = {torch.numel(cls_score[ cls_score > 0 ])}")
-            # print(f"Number of negative in cls_pred = {torch.numel(cls_score[ cls_score < 0 ])}")
-            # print(f"self.cls_loss(cls_pred, labels).sum() = {self.loss_cls(cls_score, labels).sum()}")
-            # print(f"(len(pos_inds) + len(neg_inds)) = {(len(pos_inds) + len(neg_inds))}")
-            
             # Get classification loss
-            cls_loss.append(self.loss_cls(cls_score, labels).sum() / (len(pos_inds) + len(neg_inds)))
+            cls_loss.append(self.focal_loss(cls_pred, labels).sum() / (len(pos_inds) + len(neg_inds)))
         
         cls_loss = torch.stack(cls_loss).mean(dim=0, keepdim=True)
         reg_loss = torch.stack(reg_loss, dim=0) #[B, 12]
-        iou_loss = reg_loss.new(iou_loss)
-
+        # iou_loss = reg_loss.new(iou_loss)
+        
+        # print(f"Befroe dep_loss.requires_grad = {dep_loss[0].requires_grad}")
+        if dep_preds != None: dep_loss = torch.stack(dep_loss, dim=0)
+        if nom_preds != None: nom_loss = torch.stack(nom_loss, dim=0)
+        
         # Weight regression loss by number of ground true in each images
-        weights = reg_pred.new(number_of_positives).unsqueeze(1) #[B, 1]
-        weighted_regression_losses = torch.sum(weights * reg_loss / (torch.sum(weights) + 1e-6), dim=0)
-        reg_loss = weighted_regression_losses.mean(dim=0, keepdim=True)
+        pos_weight = reg_pred.new(n_pos_list).unsqueeze(1) #[B, 1]
+        reg_loss_weighted = torch.sum( reg_loss * pos_weight / (torch.sum(pos_weight) + 1e-6), dim=0)
+        reg_loss          = reg_loss_weighted.mean(dim=0, keepdim=True)
         
-        # Weight IOu loss by number of ground true in each images
-        weighted_iou_losses = torch.sum(weights * iou_loss / (torch.sum(weights) + 1e-6), dim=0)
-        iou_loss = weighted_iou_losses.mean(dim=0, keepdim=True)
+        # Weight IoU loss by number of ground true in each images
+        # weighted_iou_losses = torch.sum(pos_weight * iou_loss / (torch.sum(pos_weight) + 1e-6), dim=0)
+        # iou_loss = weighted_iou_losses.mean(dim=0, keepdim=True)
+
+        # Weight Depth loss by number of ground true in each images
+        if dep_preds != None:
+            dep_loss = torch.sum(pos_weight * dep_loss / (torch.sum(pos_weight) + 1e-6), dim=0).mean(dim=0, keepdim=True)
         
-        l = weighted_regression_losses.detach().cpu().numpy()
-        # print("dx    dy    dw    dh    | cdx    cdy    cdz   |cd_sin cd_cos | w     h     l    | hdg")
-        # print("{:.3f} {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f} {:.3f} | {:.3f} {:.3f} {:.3f} | {:.3f}".format(l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12]))
-        # print(f"cls_loss, reg_loss, iou_loss = {(cls_loss.detach().cpu().numpy()[0], reg_loss.detach().cpu().numpy()[0], iou_loss.detach().cpu().numpy()[0])}")
+        if nom_preds != None:
+            nom_loss = torch.sum(pos_weight * nom_loss / (torch.sum(pos_weight) + 1e-6), dim=0).mean(dim=0, keepdim=True)
         
-        # return dict(cls_loss=cls_loss,
-        #             reg_loss=reg_loss,
-        #             iou_loss=iou_loss,
-        #             total_loss=cls_loss + reg_loss + iou_loss)
+        # TODO, re-implement iou_loss someday, also 2d bbox regression can be eliminated if we use iou loss
         log_dict = {}
-        log_dict['1/cls_loss'] = cls_loss
-        log_dict['1/reg_loss'] = reg_loss
+        log_dict['1/cls_loss']   = cls_loss
+        log_dict['1/reg_loss']   = reg_loss
         log_dict['1/total_loss'] = cls_loss + reg_loss
-        log_dict['2/dx']     = weighted_regression_losses[0]
-        log_dict['2/dy']     = weighted_regression_losses[1]
-        log_dict['2/dw']     = weighted_regression_losses[2]
-        log_dict['2/dh']     = weighted_regression_losses[3]
-        log_dict['2/cdx']    = weighted_regression_losses[4]
-        log_dict['2/cdy']    = weighted_regression_losses[5]
-        log_dict['2/cdz']    = weighted_regression_losses[6]
-        log_dict['4/d_sin']  = weighted_regression_losses[7]
-        log_dict['4/d_cos']  = weighted_regression_losses[8]
-        log_dict['4/dw']     = weighted_regression_losses[9]
-        log_dict['4/dh']     = weighted_regression_losses[10]
-        log_dict['4/dl']     = weighted_regression_losses[11]
-        log_dict['4/d_hdg']  = weighted_regression_losses[12]
+        if self.is_seperate_cz:
+            log_dict['1/dep_loss']    = dep_loss
+            log_dict['1/total_loss'] += dep_loss
+        if self.is_noam_loss and self.is_seperate_noam:
+            log_dict['1/nom_loss']    = nom_loss
+            log_dict['1/total_loss'] += nom_loss
+        log_dict['2/dx']     = reg_loss_weighted[0]
+        log_dict['2/dy']     = reg_loss_weighted[1]
+        log_dict['2/dw']     = reg_loss_weighted[2]
+        log_dict['2/dh']     = reg_loss_weighted[3]
+        log_dict['2/cdx']    = reg_loss_weighted[4]
+        log_dict['2/cdy']    = reg_loss_weighted[5]
+        if self.is_seperate_cz:
+            log_dict['2/cdz']    = dep_loss.detach().cpu().numpy()[0]
+            log_dict['4/d_sin']  = reg_loss_weighted[6]
+            log_dict['4/d_cos']  = reg_loss_weighted[7]
+            log_dict['4/dw']     = reg_loss_weighted[8]
+            log_dict['4/dh']     = reg_loss_weighted[9]
+            log_dict['4/dl']     = reg_loss_weighted[10]
+            log_dict['4/d_hdg']  = reg_loss_weighted[11]
+        else:
+            log_dict['2/cdz']    = reg_loss_weighted[6]
+            log_dict['4/d_sin']  = reg_loss_weighted[7]
+            log_dict['4/d_cos']  = reg_loss_weighted[8]
+            log_dict['4/dw']     = reg_loss_weighted[9]
+            log_dict['4/dh']     = reg_loss_weighted[10]
+            log_dict['4/dl']     = reg_loss_weighted[11]
+            log_dict['4/d_hdg']  = reg_loss_weighted[12]
+        
+        if self.is_noam_loss and (not self.is_seperate_noam):
+            log_dict['5/farer_x']  = reg_loss_weighted[12]
+            log_dict['5/farer_y']  = reg_loss_weighted[13]
+            log_dict['5/close_x']  = reg_loss_weighted[14]
+            log_dict['5/close_y']  = reg_loss_weighted[15]
+            log_dict['5/right_x']  = reg_loss_weighted[16]
+            log_dict['5/right_y']  = reg_loss_weighted[17]
+            log_dict['5/lefft_x']  = reg_loss_weighted[18]
+            log_dict['5/lefft_y']  = reg_loss_weighted[19]
+        
         log_dict['3/n_positive_anchor'] = torch.tensor([n_pos])
         log_dict['3/n_negative_anchor'] = torch.tensor([n_neg])
         # log_dict['3/n_ignored_anchor']  = torch.tensor([n_ign])
-        log_dict['3/n_positive_predict'] = torch.numel(cls_score[ cls_score >  0 ])
-        log_dict['3/n_negative_predict'] = torch.numel(cls_score[ cls_score <= 0 ])
-        log_dict['3/mean_positive_predict'] = cls_score[ cls_score >  0 ].mean()
-        log_dict['3/mean_negative_predict'] = cls_score[ cls_score <= 0 ].mean()
+        log_dict['3/n_positive_predict'] = torch.numel(cls_pred[ cls_pred >  0 ])
+        log_dict['3/n_negative_predict'] = torch.numel(cls_pred[ cls_pred <= 0 ])
+        log_dict['3/mean_positive_predict'] = cls_pred[ cls_pred >  0 ].mean()
+        log_dict['3/mean_negative_predict'] = cls_pred[ cls_pred <= 0 ].mean()
 
         return log_dict
-
-class StereoHead(AnchorBasedDetection3DHead):
-    def init_layers(self, num_features_in,
-                          num_anchors:int,
-                          num_cls_output:int,
-                          num_reg_output:int,
-                          cls_feature_size:int=1024,
-                          reg_feature_size:int=1024,
-                          **kwargs):
-
-        self.cls_feature_extraction = nn.Sequential(
-            nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
-            nn.Dropout2d(0.3),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(cls_feature_size, cls_feature_size, kernel_size=3, padding=1),
-            nn.Dropout2d(0.3),
-            nn.ReLU(inplace=True),
-
-            nn.Conv2d(cls_feature_size, num_anchors*(num_cls_output), kernel_size=3, padding=1),
-            AnchorFlatten(num_cls_output)
-        )
-        self.cls_feature_extraction[-2].weight.data.fill_(0)
-        self.cls_feature_extraction[-2].bias.data.fill_(0)
-
-        self.reg_feature_extraction = nn.Sequential(
-            ConvBnReLU(num_features_in, reg_feature_size, (3, 3)),
-            BasicBlock(reg_feature_size, reg_feature_size),
-            nn.ReLU(),
-            nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-            AnchorFlatten(num_reg_output)
-        )
-
-        self.reg_feature_extraction[-2].weight.data.fill_(0)
-        self.reg_feature_extraction[-2].bias.data.fill_(0)
 
 class GroundAwareHead(AnchorBasedDetection3DHead):
     def init_layers(self, num_features_in,
@@ -856,6 +920,9 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                           reg_feature_size:int=1024,
                           **kwargs):
         
+        ####################################
+        ### Attention Module Declaration ###
+        ####################################
         if self.use_spatial_attention or self.use_channel_attention:
             self.cbam_layer = CBAM(num_features_in, 
                                     reduction_ratio = 16, 
@@ -872,32 +939,85 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             self.coord_atten_layer = CoordAtt(num_features_in, num_features_in)
             print(self.coord_atten_layer)
         
+        ###################################
+        ### Dilation Module Declaration ###
+        ###################################
+        if self.num_dcnv2 != 0:
+            self.dcn_layers = nn.ModuleList([
+                DeformableConv2d(1024, 1024, kernel_size=3, stride=1, padding=1)
+                for _ in range(self.num_dcnv2)
+            ])
+
+        if self.num_pac_layer != 0:
+            if self.is_pac_bn_relu:
+                self.pac_layers = []
+                for _ in range(self.num_pac_layer):
+                    self.pac_layers.append( nn.Sequential(
+                        PerspectiveConv2d(num_features_in,
+                                            num_features_in,
+                                            self.pac_mode,
+                                            offset_2d = self.offset_2d,
+                                            offset_3d = self.offset_3d,
+                                            input_shape = (18, 80),
+                                            pad_mode=self.pad_mode,
+                                            adpative_P2 = self.adpative_P2,),
+                        nn.BatchNorm2d(num_features_in),
+                        nn.ReLU(),) )
+                self.pac_layers = [n.to("cuda") for n in self.pac_layers] # TODO, tmp
+            else:
+                self.pac_layers = nn.ModuleList([
+                    PerspectiveConv2d(num_features_in,
+                                    num_features_in,
+                                    self.pac_mode,
+                                    offset_2d = self.offset_2d,
+                                    offset_3d = self.offset_3d,
+                                    input_shape = (18, 80),
+                                    pad_mode=self.pad_mode,
+                                    adpative_P2 = self.adpative_P2,)
+                    for _ in range(self.num_pac_layer) ]) 
+                
+            print(f"self.pac_layers = {self.pac_layers}")
+        
+        if self.is_rfb:
+            self.RFB_layer = BasicRFB(1024, 1024, scale = 1.0, visual=2)
+        
+        if self.is_aspp:
+            self.aspp_layer = ASPP(1024, 1024)
+        
+        if self.is_cubic_pac:
+            self.pac_cubic_layer =  nn.Sequential(PerspectiveConv2d_cubic(num_features_in,
+                                                                          num_features_in,
+                                                                          self.pac_mode,
+                                                                          offset_2d = self.offset_2d,
+                                                                          offset_3d = self.offset_3d,
+                                                                          input_shape = (18, 80),
+                                                                          pad_mode=self.pad_mode,
+                                                                          adpative_P2 = self.adpative_P2,),
+                                                                          nn.BatchNorm2d(num_features_in),
+                                                                          nn.ReLU(),)
+        
+        #########################################
+        ### Classification Branch Declaration ###
+        #########################################
         self.cls_feature_extraction = nn.Sequential(
             nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
             nn.Dropout2d(0.3),
-            
             nn.ReLU(inplace=True),
             nn.Conv2d(cls_feature_size, cls_feature_size, kernel_size=3, padding=1),
             nn.Dropout2d(0.3),
-            
             nn.ReLU(inplace=True),
             nn.Conv2d(cls_feature_size, num_anchors*num_cls_output, kernel_size=3, padding=1),
-            
             AnchorFlatten(num_cls_output)
         )
         self.cls_feature_extraction[-2].weight.data.fill_(0)
         self.cls_feature_extraction[-2].bias.data.fill_(0)
 
-        print(f"GroundAwareHead  self.exp = {self.exp}")
+        print(f"GroundAwareHead self.exp = {self.exp}")
         assert self.exp != "no_look_ground", f"self.exp == no_look_ground, this setting is not supported anymore, because it's worse than baseline"
 
-        # 
-        num_reg_branch_output = num_reg_output
-        if self.is_seperate_cz: 
-            num_reg_branch_output -= 1
-        if self.is_seperate_2d:
-            num_reg_branch_output -= 4
-        
+        #####################################
+        ### Regression Branch Declaration ###
+        #####################################
         self.reg_feature_extraction = nn.Sequential(
             LookGround(num_features_in, self.exp),
             nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
@@ -906,15 +1026,18 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
             nn.BatchNorm2d(reg_feature_size),
             nn.ReLU(inplace=True),
-            nn.Conv2d(reg_feature_size, num_anchors*num_reg_branch_output, kernel_size=3, padding=1),
-            # AnchorFlatten((num_reg_output))
+            nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
+            AnchorFlatten((num_reg_output))
         )
-        self.reg_feature_extraction[-1].weight.data.fill_(0)
-        self.reg_feature_extraction[-1].bias.data.fill_(0)
-        
+        self.reg_feature_extraction[-2].weight.data.fill_(0)
+        self.reg_feature_extraction[-2].bias.data.fill_(0)
+
+        ################################
+        ### Depth Branch Declaration ###
+        ################################
         if self.is_seperate_cz:
-            if self.is_fc_depth:
-                self.cz_feature_extraction = nn.Sequential(
+            if self.cz_pred_mode == "fc":
+                self.cz_feature_extraction = nn.Sequential( # Reduce dimension from 1024 to 256
                     nn.Conv2d(num_features_in, 256, kernel_size = 1),
                 )
                 self.cz_fc_layer = nn.Sequential(
@@ -922,7 +1045,7 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                     nn.ReLU(),
                     nn.Linear(1440 , 1440),
                 )
-            else:
+            elif self.cz_pred_mode == "look_ground":
                 self.cz_feature_extraction = nn.Sequential(
                     LookGround(num_features_in, self.exp),
                     nn.Conv2d(num_features_in, self.cz_reg_dim, kernel_size=3, padding=1),
@@ -932,47 +1055,37 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                     nn.BatchNorm2d(self.cz_reg_dim),
                     nn.ReLU(inplace=True),
                     nn.Conv2d(self.cz_reg_dim, num_anchors*1, kernel_size=3, padding=1),
+                    AnchorFlatten((1)),
                 )
-                self.cz_feature_extraction[-1].weight.data.fill_(0)
-                self.cz_feature_extraction[-1].bias.data.fill_(0)
+                self.cz_feature_extraction[-2].weight.data.fill_(0)
+                self.cz_feature_extraction[-2].bias.data.fill_(0)
+            
+            elif self.cz_pred_mode == "oridinal_loss": # TODO
+                raise NotImplementedError
         
-        if self.is_seperate_2d:
-            self.feature_2d_extraction = nn.Sequential(
-                nn.Conv2d(num_features_in, self.reg_2d_dim, kernel_size=3, padding=1),
-                nn.BatchNorm2d(self.reg_2d_dim),
+        ###################################
+        ### Noam Regression Declaration ###
+        ###################################
+        if self.is_noam_loss and self.is_seperate_noam:
+            self.noam_feature_extraction = nn.Sequential(
+                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
                 nn.ReLU(),
-                nn.Conv2d(self.reg_2d_dim , self.reg_2d_dim, kernel_size=3, padding=1),
-                nn.BatchNorm2d(self.reg_2d_dim),
+                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(self.reg_2d_dim , num_anchors*4, kernel_size=3, padding=1),
+                nn.Conv2d(reg_feature_size, num_anchors*8, kernel_size=3, padding=1),
+                AnchorFlatten((8))
             )
-            self.feature_2d_extraction[-1].weight.data.fill_(0)
-            self.feature_2d_extraction[-1].bias.data.fill_(0)
-        
-        if self.num_dcnv2 != 0:
-            self.dcn_layers = nn.ModuleList([
-                DeformableConv2d(1024, 1024, kernel_size=3, stride=1, padding=1)
-                for _ in range(self.num_dcnv2)
-            ])
-
-        if self.num_pac_layer != 0:
-            self.pac_layers = nn.ModuleList([
-                PerspectiveConv2d(num_features_in,
-                                  num_features_in,
-                                  self.pac_mode,
-                                  offset_3d = self.offset_3d,
-                                  input_shape = (18, 80),
-                                  pad_mode=self.pad_mode)
-                for _ in range(self.num_pac_layer)
-            ])
-        
+            self.noam_feature_extraction[-2].weight.data.fill_(0)
+            self.noam_feature_extraction[-2].bias.data.fill_(0)
         
     def forward(self, inputs):
         ########################
         ### Attention Module ###
         ########################
         if self.use_spatial_attention or self.use_channel_attention:
-            inputs['features'] = self.cbam_layer(inputs['features'])
+            inputs['features'] = self.cbam_layer(inputs['features']) # [1024, 18, 80]
         
         if self.use_bam:
             inputs['features'] = self.bam_layer(inputs['features'])
@@ -990,203 +1103,52 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         if self.num_pac_layer != 0:
             for i in range(self.num_pac_layer):
                 inputs['features'] = self.pac_layers[i](inputs)
+    
+        if self.is_rfb:
+            inputs['features'] = self.RFB_layer(inputs['features'])
         
-        # print(f"[detection_3d_head.py] inputs['features'] = {inputs['features'].shape}") # [1024, 18, 80]
+        if self.is_aspp:
+            inputs['features'] = self.aspp_layer(inputs['features'])
+        
+        if self.is_cubic_pac:
+            inputs['features'] = self.pac_cubic_layer(inputs)
+            
+        
         cls_preds = self.cls_feature_extraction(inputs['features'])
         if self.exp == "no_look_ground":
             reg_preds = self.reg_feature_extraction(inputs['features'])
         else:
             reg_preds = self.reg_feature_extraction(inputs)
-            
-        # Concatenate !
+        
+        ################################
+        ### Depth Prediction  Module ###
+        ################################
         if self.is_seperate_cz:
-            if self.is_fc_depth:
-                cz_preds = self.cz_feature_extraction(inputs['features'])
-                cz_preds = cz_preds.permute(0, 2, 3, 1)
-                cz_preds = cz_preds.contiguous().view(cz_preds.shape[0], -1) # torch.Size([8, 368640])
-                cz_preds = self.cz_fc_layer(cz_preds) # torch.Size([8, 1440])
-                cz_preds = cz_preds.view(cz_preds.shape[0], -1, 18, 80) # torch.Size([8, 1, 18, 80])
-                cz_preds = cz_preds.repeat(1, 32, 1, 1) # torch.Size([8, 32, 18, 80])
-            else:
-                cz_preds = self.cz_feature_extraction(inputs)
+            if self.cz_pred_mode == "fc":
+                dep_preds = self.cz_feature_extraction(inputs['features'])
+                dep_preds = dep_preds.permute(0, 2, 3, 1)
+                dep_preds = dep_preds.contiguous().view(dep_preds.shape[0], -1) # torch.Size([8, 368640])
+                dep_preds = self.cz_fc_layer(dep_preds) # torch.Size([8, 1440])
+                dep_preds = dep_preds.view(dep_preds.shape[0], -1, 18, 80) # torch.Size([8, 1, 18, 80])
+                dep_preds = dep_preds.repeat(1, 32, 1, 1) # torch.Size([8, 32, 18, 80])
             
-        if self.is_seperate_2d:
-            preds_2d = self.feature_2d_extraction(inputs['features'])
-        
-        if self.is_seperate_cz or self.is_seperate_2d:
-            # print(f"cz_preds = {cz_preds.shape}") # torch.Size([8, 32, 18, 80])
-            # print(f"reg_preds = {reg_preds.shape}") # torch.Size([8, 352, 18, 80])
+            elif self.cz_pred_mode == "look_ground":
+                dep_preds = self.cz_feature_extraction(inputs)
             
-            # Adjust Dimension to [B, num_anchor, num_regression_value, H, W]
-            reg_preds = reg_preds.view(reg_preds.shape[0], self.layer_cfg.num_anchors, -1, reg_preds.shape[2], reg_preds.shape[3])
-            if self.is_seperate_cz:
-                cz_preds  = torch.unsqueeze(cz_preds, 2)
-            if self.is_seperate_2d:
-                preds_2d  = preds_2d.view(preds_2d.shape[0], self.layer_cfg.num_anchors, -1, preds_2d.shape[2], preds_2d.shape[3])
-            
-            # print(f"reg_preds_new = {reg_preds.shape}") # torch.Size([8, 32, 11, 18, 80])
-            # print(f"cz_preds_new = {cz_preds.shape}") #  torch.Size([8, 32, 1, 18, 80])
-            # print(f"preds_2d = {preds_2d.shape}") #  torch.Size([8, 128, 1, 18, 80])
-            # [dx, dy, dw, dh, cdx, cdy, cdz, cd_sin, cd_cos, w3d, h3d, l3d]
-            #  0   1   2   3   4    5    6    7       8       9    10   11
-            
-            # Concat seperate value together
-            if self.is_seperate_2d:
-                reg_preds = torch.cat([preds_2d , reg_preds], dim=2)
-            if self.is_seperate_cz:
-                reg_preds = torch.cat([reg_preds[:, :, :6 , :, :], cz_preds , reg_preds[:, :, 6: , :, :]], dim=2)
-            # print(f"all_reg_preds = {all_reg_preds.shape}") # torch.Size([8, 32, 12, 18, 80])
-            reg_preds = reg_preds.view(reg_preds.shape[0], -1, reg_preds.shape[3], reg_preds.shape[4])
-            # print(f"reg_preds = {reg_preds.shape}") # torch.Size([8, 384, 18, 80])
-            # reg_preds_new = torch.tensor_split(reg_preds, 32, dim=1)
-            
-        # Anchor Flatten
-        reg_preds = reg_preds.permute(0, 2, 3, 1)
-        reg_preds = reg_preds.contiguous().view(reg_preds.shape[0], -1, 12)
-        # print(f"reg_preds = {reg_preds.shape}")
-        # print(f"reg_preds_new = {len(reg_preds_new)}") # 32
-        # print(f"reg_preds_new = {reg_preds_new[0].shape}") # torch.Size([8, 11, 18, 80])
+            elif self.cz_pred_mode == "oridinal_loss":
+                raise NotImplementedError
+        else:
+            dep_preds = None
         
-        return cls_preds, reg_preds
-
-class CzHead(AnchorBasedDetection3DHead):
-    def init_layers(self, num_features_in,
-                          num_anchors:int,
-                          num_cls_output:int,
-                          num_reg_output:int,
-                          cls_feature_size:int=1024,
-                          reg_feature_size:int=1024,
-                          **kwargs):
+        ###################
+        ### NOAM Moduel ###
+        ###################
+        if self.is_noam_loss and self.is_seperate_noam:
+            nom_preds = self.noam_feature_extraction(inputs['features'])
+        else:
+            nom_preds = None
         
-        # TODO 256 should become a hyperparameter
-        # TODO try MLP, try more convolution layer
-        # TODO try injection other regressed value
-        self.conv_layer_256 = nn.Sequential(
-            nn.Conv2d(num_features_in, 256, 3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-        )
-        self.depth_regressor = nn.Sequential(
-            nn.Linear(18*80*256, 1, bias=True)
-        )
-        
-    def forward(self, inputs):
-        features    = inputs['features']
-        P2          = inputs['P2']
-        image       = inputs['image']
-        cls_preds   = inputs['cls_preds']
-        reg_preds   = inputs['reg_preds']
-        anchors     = inputs['anchors']
-        annotations = inputs['annotations']
-        
-        
-        features_256 = self.conv_layer_256(features)
-        print(f"features_256 = {features_256.shape}") #  torch.Size([8, 256, 18, 80])
-        
-        # Step1: Get (cx, cy)
-        # Use cx, cy to crop features
-        # Linear layer regressor
-        # Return [B, 18, 80, 1] -> should be the same as cls_preds
-
-
-        # This is from loss()
-        anchor             = anchors['anchors'][0] #[N, 4]
-        anchor_mean_std_3d = anchors['anchor_mean_std_3d']
-        for j in range(cls_preds.shape[0]):
-            reg_pred    = reg_preds[j]
-            cls_score   = cls_preds[j][..., 0:self.num_classes]
-            alpha_score = cls_preds[j][..., self.num_classes:self.num_classes+1]
-
-            # selected by mask
-            useful_mask = anchors['mask'][j] #[N]
-            anchor_j    = anchor[useful_mask]
-            anchor_mean_std_3d_j = anchor_mean_std_3d[useful_mask]
-            reg_pred    = reg_pred[useful_mask]
-            cls_score   = cls_score[useful_mask]
-            alpha_score = alpha_score[useful_mask]
-
-            # only select useful bbox_annotations
-            bbox_annotation = annotations[j, :, :]
-            bbox_annotation = bbox_annotation[bbox_annotation[:, 4] != -1]#[k]
-
-            if len(bbox_annotation) == 0: continue
-            
-            # This is like retinanet's and YOLO's MaxIouAssignerm 
-            assignement_result_dict = self._assign(anchor_j, bbox_annotation, **self.loss_cfg) # doesn't involve prediction
-            
-            # This is for checking GAC's anchors miss rate
-            unique, counts = np.unique(assignement_result_dict['assigned_gt_inds'].cpu().numpy(), return_counts=True)
-            anchor_assign = dict(zip(unique, counts)) # {-1: 100, 0: 3720, 1: 40}
-
-            # I think this sample function does nothing
-            sampling_result_dict    = self._sample(assignement_result_dict, anchor_j, bbox_annotation) # doesn't involve prediction
-            num_valid_anchors = anchor_j.shape[0]
-            labels = anchor_j.new_full((num_valid_anchors, self.num_classes),
-                                    -1, # -1 not computed, binary for each class
-                                    dtype=torch.float)
-
-            pos_inds = sampling_result_dict['pos_inds']
-            neg_inds = sampling_result_dict['neg_inds']
-            #
-            n_pos = pos_inds.shape[0]
-            n_neg = neg_inds.shape[0]
-            # print(f"n_pos, n_neg = {(n_pos, n_neg)}") # (86, 14078) n_pos, n_neg = (40, 3720)
-
-            if len(pos_inds) > 0:
-                pos_assigned_gt_label = bbox_annotation[sampling_result_dict['pos_assigned_gt_inds'], 4].long()
-                
-                selected_mask, selected_anchor_3d = self._get_anchor_3d(
-                    sampling_result_dict['pos_bboxes'],
-                    anchor_mean_std_3d_j[pos_inds],
-                    pos_assigned_gt_label,
-                )
-                if len(selected_anchor_3d) > 0:
-                    pos_inds = pos_inds[selected_mask]
-                    pos_bboxes    = sampling_result_dict['pos_bboxes'][selected_mask]
-                    pos_gt_bboxes = sampling_result_dict['pos_gt_bboxes'][selected_mask] # pos_gt_bbox is the corresspondent target for that entry of postive bbox
-                    pos_assigned_gt = sampling_result_dict['pos_assigned_gt_inds'][selected_mask]
-                
-                    pos_bbox_targets, targets_alpha_cls = self._encode(
-                        pos_bboxes, pos_gt_bboxes, selected_anchor_3d
-                    ) #[N, 12], [N, 1]
-                    label_index = pos_assigned_gt_label[selected_mask]
-                    labels[pos_inds, :] = 0
-                    labels[pos_inds, label_index] = 1
-
-                    pos_anchor      = anchor[pos_inds]
-                    pos_alpha_score = alpha_score[pos_inds]
-
-                    # Get IOU loss 
-                    pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
-                    pos_target_decoded, _        = self._decode(pos_anchor, pos_bbox_targets,    anchor_mean_std_3d_j[pos_inds], label_index, pos_alpha_score)
-                    # print(f"pos_prediction_decoded[:, :4] = {pos_prediction_decoded[mask, :4]}")
-                    # print(f"pos_target_decoded[:, :4] = {pos_target_decoded[mask, :4]}")
-                    # [x1, y1, x2, y2, cx, cy, cz, w, h, l, alpha]
-                    
-                    # cx_j = pos_prediction_decoded[mask, 4] # cx
-                    # cy_j = pos_prediction_decoded[mask, 5] # cy
-                    # print(f"cx_j = {cx_j.shape}")
-                    # print(f"cy_j = {cy_j.shape}")
-                    cxy_j = pos_prediction_decoded[mask, 4:6] # cx, cy
-                    print(f"cxy_j = {cxy_j.shape}") # torch.Size([220, 2])
-                    cx_f_idx = torch.floor(cxy_j[:, 0] / 16).type(torch.int32)
-                    cy_f_idx = torch.floor(cxy_j[:, 1] / 16).type(torch.int32)
-                    
-                    # print(f"features_256 = {features_256.shape}") #  torch.Size([8, 256, 18, 80])
-                    BANDWIDTH = 5
-                    offset = int(BANDWIDTH - 1 // 2) # 2
-                    
-                    for k in range(cxy_j.shape[0]): # TODO out of bound have unexpceted dimension
-                        stripe = features_256[j, :, cy_f_idx[k]-offset:cy_f_idx[k]+offset, :]
-                        column = features_256[j, :, :                                       , 
-                                                    cx_f_idx[k]-offset:cx_f_idx[k]+offset]
-                        print(f"stripe = {stripe.shape}")
-                        print(f"column = {column.shape}")
-                        
-                    # print(cx_f_idx)
-                    # cz_j = pos_prediction_decoded[mask, 6] # cz
-                    
-                    # features_256
-                    # self.depth_regressor()
-                    # Flatten
-
+        return {"cls_preds" : cls_preds,
+                "reg_preds" : reg_preds,
+                "dep_preds" : dep_preds,
+                "nom_preds" : nom_preds}
