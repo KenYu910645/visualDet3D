@@ -11,8 +11,6 @@ from visualDet3D.networks.heads.detection_3d_head import StereoHead
 from visualDet3D.networks.lib.blocks import AnchorFlatten, ConvBnReLU
 from visualDet3D.networks.backbones.resnet import BasicBlock
 
-
-
 @DETECTOR_DICT.register_module
 class Stereo3D(nn.Module):
     """

@@ -5,6 +5,9 @@
 # data_augumentation/.py
 
 # # Evaluation on validation set
+# ./launchers/det_precompute.sh config/pac/pac_2d_offset.py train
+# ./launchers/eval.sh config/pac/pac_2d_offset.py 1 /home/lab530/KenYu/visualDet3D/exp_output/pac/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
+
 # ./launchers/det_precompute.sh config/loss/noam_combine_regress.py train
 # ./launchers/eval.sh config/loss/noam_combine_regress.py 1 /home/lab530/KenYu/visualDet3D/exp_output/loss/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
 
@@ -14,13 +17,23 @@
 # ./launchers/det_precompute.sh config/best/fpn_kmeans18_large_only.py train
 # ./launchers/train.sh config/best/fpn_kmeans18_large_only.py 1 fpn_kmeans18_large_only
 
-EXP_NAME=('cubic_pac')
+EXP_NAME=('pac_2d_offset_inconsist_check')
 
 for exp_name in "${EXP_NAME[@]}"
 do
-    # ./launchers/det_precompute.sh config/pac/"$exp_name".py train
+    ./launchers/det_precompute.sh config/pac/"$exp_name".py train
     ./launchers/train.sh config/pac/"$exp_name".py 1 "$exp_name"
 done
+
+# EXP_NAME=('baseline_inconsist_check' 'erase_back_ground_inconsist_check')
+
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/data_augumentation/"$exp_name".py train
+#     ./launchers/train.sh config/data_augumentation/"$exp_name".py 1 "$exp_name"
+# done
+
+
 
 # EXP_NAME=('add_random_zoom_only_in')
 

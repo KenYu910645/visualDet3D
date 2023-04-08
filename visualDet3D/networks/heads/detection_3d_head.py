@@ -974,7 +974,7 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                                     input_shape = (18, 80),
                                     pad_mode=self.pad_mode,
                                     adpative_P2 = self.adpative_P2,)
-                    for _ in range(self.num_pac_layer) ]) 
+                    for _ in range(self.num_pac_layer) ])
                 
             print(f"self.pac_layers = {self.pac_layers}")
         

@@ -1,3 +1,6 @@
+'''
+This file is before noam refactoring
+'''
 import torch
 import torch.nn as nn
 from torchvision.ops import nms
@@ -614,7 +617,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             max_score, bboxes, label = self._post_process(max_score, bboxes, label, P2s)
 
         # print(f"Number of detection = {bboxes.shape[0]}")
-        return max_score, bboxes, label
+        return max_score, bboxes, label, None
 
     def loss(self, preds, anchors, annotations, P2s):
         '''

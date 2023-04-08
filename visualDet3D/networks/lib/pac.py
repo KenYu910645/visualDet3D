@@ -161,10 +161,6 @@ class PerspectiveConv2d(nn.Module):
         else:
             offsets = torch.cat([ self.get_offset(self.P2_A)           for _ in range(B) ], dim=0) # [8, 18, 18, 80]
 
-        # Replicate Padding
-        # x = F.pad(x, [self.pad_size for _ in range(4)], mode = self.pad_mode) # "replicate"
-        # print(f"x = {x.shape}") # [8, 1024, 30, 92]
-
         x = torchvision.ops.deform_conv2d(input=x, 
                                           offset=offsets,
                                           weight=self.regular_conv.weight,
@@ -172,9 +168,6 @@ class PerspectiveConv2d(nn.Module):
                                           padding=self.padding,
                                           mask=None,
                                           stride=self.stride,)
-        # For padding
-        # x = x[:, :, 6:24, 6:86]
-        
         return x
 
 
