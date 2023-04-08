@@ -3,6 +3,7 @@ import numpy as np
 from easydict import EasyDict
 from visualDet3D.networks.utils.registry import AUGMENTATION_DICT
 from visualDet3D.data.kitti.kittidata import KittiObj
+# from visualDet3D.data.pipeline.stereo_augmentator import CopyPaste
 
 def build_single_augmentator(cfg:EasyDict):
     name:str = cfg.type_name
@@ -36,7 +37,8 @@ class Compose(object):
                        p3:Union[None, np.ndarray]=None,
                        labels:Union[None, List[KittiObj]]=None,
                        image_gt:Union[None, np.ndarray]=None,
-                       lidar:Union[None, np.ndarray]=None)->List[Union[None, np.ndarray, List[KittiObj]]]:
+                       lidar:Union[None, np.ndarray]=None,
+                       depth_map:Union[None, np.ndarray]=None,)->List[Union[None, np.ndarray, List[KittiObj]]]:
         """
             if self.is_return_all:
                 The return list will follow the common signature: left_image, right_image, p2, p3, labels, image_gt, lidar(in the camera coordinate)
@@ -46,10 +48,12 @@ class Compose(object):
                 Used in the final wrapper to provide a more flexible interface.
         """
         for t in self.transforms:
-            left_image, right_image, p2, p3, labels, image_gt, lidar = t(left_image, right_image, p2, p3, labels, image_gt, lidar)
-        return_list = [left_image, right_image, p2, p3, labels, image_gt, lidar]
-        # print(f"[augmentation_builder.py]return_list[0] = {return_list[0].shape}")
-        
+            # if isinstance(t, CopyPaste):
+            if hasattr(t, 'use_scene_aware'): # It's CopyPaste object
+                left_image, right_image, p2, p3, labels, image_gt, lidar = t(left_image, right_image, p2, p3, labels, image_gt, lidar, depth_map)
+            else:
+                left_image, right_image, p2, p3, labels, image_gt, lidar = t(left_image, right_image, p2, p3, labels, image_gt, lidar)
+            return_list = [left_image, right_image, p2, p3, labels, image_gt, lidar]
         if self.is_return_all:
             return return_list
         return [item for item in return_list if item is not None]

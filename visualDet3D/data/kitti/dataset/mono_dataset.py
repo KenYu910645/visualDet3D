@@ -41,13 +41,16 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         obj_types           = cfg.obj_types
         is_train = (split == 'training')
 
+        self.is_copy_paste = any(d['type_name'] == 'CopyPaste' for d in cfg.data.train_augmentation)
+        
         imdb_file_path = os.path.join(preprocessed_path, split, 'imdb.pkl')
         self.imdb = pickle.load(open(imdb_file_path, 'rb')) # list of kittiData
         self.output_dict = {
                 "calib": False,
                 "image": True,
                 "label": False,
-                "velodyne": False
+                "velodyne": False,
+                "depth": self.is_copy_paste,
             }
         if is_train:
             self.transform = build_augmentator(cfg.data.train_augmentation)
@@ -57,7 +60,7 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         self.is_train = is_train
         self.obj_types = obj_types
         self.use_right_image = getattr(cfg.data, 'use_right_image', True)
-        print(f"[mono_dataset.py]self.use_right_image = {self.use_right_image}")
+        print(f"[mono_dataset.py] use_right_image = {self.use_right_image}")
         self.is_reproject = getattr(cfg.data, 'is_reproject', True) # if reproject 2d
 
     def _reproject(self, P2:np.ndarray, transformed_label:List[KittiObj]) -> Tuple[List[KittiObj], np.ndarray]:
@@ -98,13 +101,14 @@ class KittiMonoDataset(torch.utils.data.Dataset):
                 "image": False,
                 "image_3":True,
                 "label": False,
-                "velodyne": False
+                "velodyne": False,
+                "depth": self.is_copy_paste,
             }
-            calib, _, image, _, _ = kitti_data.read_data()
+            calib, _, image, _, _, depth = kitti_data.read_data()
             calib.P2 = calib.P3 # a workaround to use P3 for right camera images. 3D bboxes are the same(cx, cy, z, w, h, l, alpha)
         else:
             kitti_data.output_dict = self.output_dict
-            _, image, _, _ = kitti_data.read_data()
+            _, image, _, _, depth = kitti_data.read_data()
             calib = kitti_data.calib
         calib.image_shape = image.shape
         label = kitti_data.label # label: list of kittiObj
@@ -114,9 +118,7 @@ class KittiMonoDataset(torch.utils.data.Dataset):
                 label.append(obj)
 
         # label transformation happen here
-        # print(f"label = {(label[0].bbox_l, label[0].bbox_t, label[0].bbox_r, label[0].bbox_b)}")
-        transformed_image, transformed_P2, transformed_label = self.transform(image, p2=deepcopy(calib.P2), labels=deepcopy(label))
-        # print(f"transformed_label = {(transformed_label[0].bbox_l, transformed_label[0].bbox_t, transformed_label[0].bbox_r, transformed_label[0].bbox_b)}")
+        transformed_image, transformed_P2, transformed_label = self.transform(image, p2=deepcopy(calib.P2), labels=deepcopy(label), depth_map=depth)
         bbox3d_state = np.zeros([len(transformed_label), 7]) #[camera_x, camera_y, z, w, h, l, alpha]
         if len(transformed_label) > 0:
             transformed_label, bbox3d_state = self._reproject(transformed_P2, transformed_label)
@@ -147,10 +149,10 @@ class KittiMonoDataset(torch.utils.data.Dataset):
         rgb_images = np.array([item["image"] for item in batch])#[batch, H, W, 3]
         rgb_images = rgb_images.transpose([0, 3, 1, 2])
 
-        calib = [item["calib"] for item in batch]
-        label = [item['label'] for item in batch]
-        bbox2ds = [item['bbox2d'] for item in batch]
-        bbox3ds = [item['bbox3d'] for item in batch]
+        calib     = [item["calib"]     for item in batch]
+        label     = [item['label']     for item in batch]
+        bbox2ds   = [item['bbox2d']    for item in batch]
+        bbox3ds   = [item['bbox3d']    for item in batch]
         loc_3d_ry = [item['loc_3d_ry'] for item in batch]
         # This line will cause warning:
         # Creating a tensor from a list of numpy.ndarrays is extremely slow. 
