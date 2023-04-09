@@ -6,6 +6,7 @@ import cv2
 from copy import deepcopy
 import skimage.measure
 import torch
+import shutil
 
 import matplotlib
 matplotlib.use('agg') 
@@ -17,6 +18,24 @@ from visualDet3D.data.pipeline import build_augmentator
 from visualDet3D.data.kitti.kittidata import KittiData, KittiLabel
 from visualDet3D.utils.timer import Timer
 from visualDet3D.utils.utils import cfg_from_file
+
+import random 
+import shutil
+import copy
+import json 
+import numpy as np 
+from math import sqrt
+import argparse
+import pickle
+
+import sys
+sys.path.insert(0, "/home/lab530/KenYu/ml_toolkit/kitti")
+from iou_3d import get_3d_box, box3d_iou, box2d_iou, box2d_iog
+from util_kitti import kitti_calib_file_parser, KITTI_Object
+
+import sys
+sys.path.insert(0, "/home/lab530/KenYu/ml_toolkit/data_augmentation/3Dmixup/")
+from copy_paste import CopyPaste_Object
 
 def process_train_val_file(cfg):
     train_file = cfg.data.train_split_file
@@ -52,12 +71,12 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
     anchor_prior = getattr(cfg, 'anchor_prior', True)
     external_pixelwise_anchor = getattr(cfg.detector.anchors, 'external_pixelwise_anchor', "")
 
-    total_objects = [0 for _ in range(len(cfg.obj_types))]
+    total_objects        = [0 for _ in range(len(cfg.obj_types))]
     total_usable_objects = [0 for _ in range(len(cfg.obj_types))]
     if anchor_prior:
         anchor_manager = Anchors(cfg.path.preprocessed_path, readConfigFile=False, **cfg.detector.head.anchors_cfg)
         preprocess = build_augmentator(cfg.data.test_augmentation)
-        total_objects = [0 for _ in range(len(cfg.obj_types))]
+        total_objects        = [0 for _ in range(len(cfg.obj_types))]
         total_usable_objects = [0 for _ in range(len(cfg.obj_types))]
         
         len_scale = len(anchor_manager.scales)
@@ -71,11 +90,39 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
         uniform_sum_each_type    = np.zeros((len(cfg.obj_types), 6), dtype=np.float64) # [z, sin2a, cos2a, w, h, l] : sum of all labels
         uniform_square_each_type = np.zeros((len(cfg.obj_types), 6), dtype=np.float64) # sqaure of all label
 
+    is_copy_paste = False
+    for d in cfg.data.train_augmentation:
+        if d['type_name'] == 'CopyPaste':
+            is_copy_paste = True
+            copy_paste_use_seg      = d['keywords']['use_seg']
+            copy_paste_solid_ratio  = d['keywords']['solid_ratio']
+            copy_paste_scene_awaree = d['keywords']['use_scene_aware']
+    
+    print(f"[imdb_precompute_3d.py] is_copy_paste = {is_copy_paste}")
+    instance_pool = []
     for i, index_name in enumerate(index_names):
-
+        
+        ######################################
+        ### Build copy paste instance_pool ###
+        ######################################
+        if data_split == 'training' and is_copy_paste:
+            P2   = kitti_calib_file_parser(os.path.join(data_root_dir, "calib", f"{index_name}.txt"))
+            with open(os.path.join(data_root_dir, "label_2", f"{index_name}.txt")) as f:
+                lines = f.read().splitlines()
+                lines = list(lines for lines in lines if lines) # Delete empty lines
+            objs =  [CopyPaste_Object(str_line + " NA",
+                                      idx_img = index_name,
+                                      idx_line = idx_line, 
+                                      tf_matrix = P2) for idx_line, str_line in enumerate(lines)]
+            # Filter inappropiate objs
+            for obj in objs:
+                if obj.category in cfg.obj_types and obj.truncated < 0.5 and obj.occluded == 0.0 and obj.area > 3000:
+                    if copy_paste_use_seg and len(obj.seg_points) == 0 : continue
+                    instance_pool.append(obj)
+        
         # read data with dataloader api
         data_frame = KittiData(data_root_dir, index_name, output_dict)
-        calib, image, label, velo = data_frame.read_data()
+        calib, image, label, velo, depth = data_frame.read_data()
         
         # Load label , store the list of kittiObjet and kittiCalib, 
 
@@ -194,13 +241,11 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
                 np.save(mean_file_dst, avg)
                 np.save(std_file_dst, std)
                 if cfg.data.is_overwrite_anchor_file:
-                    import shutil
                     shutil.copyfile(mean_file_dst, cfg.data.anchor_mean_std_path + "_mean.npy")
                     shutil.copyfile(std_file_dst,  cfg.data.anchor_mean_std_path + "_std.npy")
                     print(f"Save anchor mean file to {cfg.data.anchor_mean_std_path}_mean.npy")
                     print(f"Save anchor std file to {cfg.data.anchor_mean_std_path}_std.npy")
             else:
-                import shutil
                 mean_file_src = cfg.data.anchor_mean_std_path + "_mean.npy"
                 std_file_src  = cfg.data.anchor_mean_std_path + "_std.npy"
                 shutil.copyfile(mean_file_src, mean_file_dst)
@@ -208,6 +253,21 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
                 print(f"Using mean_file from {mean_file_src}")
                 print(f"Using std_file from {std_file_src}")
 
+    # For saving copy_paste instance pool
+    if data_split == 'training' and is_copy_paste:
+        
+        # Save image source
+        imgs_src  = {fn.split(".")[0]: cv2.imread(os.path.join(data_root_dir, "image_2", fn)) for fn in os.listdir(os.path.join(data_root_dir, "image_2"))}
+        print(f"Number of source image in imgs_src: {len(imgs_src)}")
+        pickle.dump(imgs_src, open(os.path.join(save_dir, "imgs_src.pkl"), "wb"))
+        print(f"Saved source images to {os.path.join(save_dir, 'imgs_src.pkl')}")
+        
+        # Save instance pool
+        print(f"Number of object in instance pool: {len(instance_pool)}")
+        pickle.dump(instance_pool, open(os.path.join(save_dir, "instance_pool.pkl"), "wb"))
+        print(f"Saved instance pool to {os.path.join(save_dir, 'instance_pool.pkl')}")
+        
+        
     pkl_file = os.path.join(save_dir,'imdb.pkl')
     pickle.dump(frames, open(pkl_file, 'wb'))
     print("{} split finished precomputing".format(data_split))
@@ -222,26 +282,32 @@ def main(config:str="config/config.py"):
     print(f"max_occlusion = {cfg.data.max_occlusion}")
     print(f"min_z = {cfg.data.min_z}")
     
+    is_copy_paste = any(d['type_name'] == 'CopyPaste' for d in cfg.data.train_augmentation)
+    
     time_display_inter = 100 # define the inverval displaying time consumed in loop
     data_root_dir = cfg.path.data_path # the base directory of training dataset
     calib_path = os.path.join(data_root_dir, 'calib') 
     list_calib = os.listdir(calib_path)
     N = len(list_calib)
-    # no need for image, could be modified for extended use
+    
+    # Load training datatset
     output_dict = {
                 "calib": True,
                 "image": True,
                 "label": True,
                 "velodyne": False,
+                "depth": is_copy_paste,
             }
-
     train_names, val_names = process_train_val_file(cfg)
     read_one_split(cfg, train_names, data_root_dir, output_dict, 'training', time_display_inter)
+    
+    # Load validation datatset
     output_dict = {
                 "calib": True,
                 "image": False,
                 "label": True,
                 "velodyne": False,
+                "depth": False,
             }
     read_one_split(cfg, val_names, data_root_dir, output_dict, 'validation', time_display_inter)
 

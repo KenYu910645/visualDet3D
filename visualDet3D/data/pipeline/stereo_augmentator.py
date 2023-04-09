@@ -18,7 +18,6 @@ import os
 import sys
 from easydict import EasyDict
 from typing import List
-# from matplotlib import pyplot as plt
 from visualDet3D.networks.utils.utils import BBox3dProjector
 from visualDet3D.utils.utils import draw_3D_box, theta2alpha_3d
 from visualDet3D.networks.utils.registry import AUGMENTATION_DICT
@@ -26,6 +25,190 @@ from visualDet3D.data.kitti.kittidata import KittiObj
 import torch
 from .augmentation_builder import Compose, build_single_augmentator
 import random as random_pkg
+import pickle
+import copy
+from math import sqrt
+
+import sys
+sys.path.insert(0, "/home/lab530/KenYu/ml_toolkit/data_augmentation/3Dmixup/")
+from copy_paste import CopyPaste_Object
+
+sys.path.insert(0, "/home/lab530/KenYu/ml_toolkit/kitti")
+from iou_3d import get_3d_box, box3d_iou, box2d_iou, box2d_iog
+
+# Added by spiderkiller
+@AUGMENTATION_DICT.register_module
+class CopyPaste(object):
+    """
+    Randomly Copy instance to this image
+    """
+    def __init__(self, num_add_obj ,use_seg, use_z_jitter ,solid_ratio, use_scene_aware):
+        self.num_add_obj     = num_add_obj # 3
+        self.use_seg         = use_seg
+        self.use_z_jitter    = use_z_jitter
+        self.solid_ratio     = solid_ratio
+        self.use_scene_aware = use_scene_aware
+        
+        self.image_dir = "/home/lab530/KenYu/kitti/training/image_2/"
+        self.depth_dir = "/home/lab530/KenYu/kitti/training/image_depth/"
+        self.instance_pool_path = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/Mono3D/output/training/instance_pool.pkl"
+        self.imgs_src_path = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/Mono3D/output/training/imgs_src.pkl"
+        
+        # Load Instance Pool
+        print(f"Loading instance pool from {self.instance_pool_path}")
+        self.instance_pool = pickle.load(open(self.instance_pool_path, "rb"))
+        
+        # Load src images
+        print(f"Loading instance pool from {self.imgs_src_path}")
+        self.imgs_src      = pickle.load(open(self.imgs_src_path, "rb"))
+        
+        # print(f"Loading source images from {self.image_dir}")
+        # self.imgs_src  = {fn.split(".")[0]: cv2.imread(os.path.join(self.image_dir, fn)) for fn in os.listdir(self.image_dir)}
+
+    def check_depth_map(self, gt_add, tar_depth):
+        try:
+            # Calculate the number of pixels above the threshold
+            num_above_threshold = np.count_nonzero(tar_depth[gt_add.ymin:gt_add.ymax, gt_add.xmin:gt_add.xmax] < gt_add.cz)
+            percent_above_threshold = num_above_threshold / gt_add.area
+            
+            if percent_above_threshold > 0.25: 
+                return False
+            else: 
+                return True
+        except TypeError:
+            pass
+        except Exception as e:
+            print(f"[ERROR] {e}")
+            return False
+
+    def check_suitable(self, gt_add, labels_tar):
+        '''
+        Check whether gt_add is sutiable to add to gts_tar
+        '''
+        for gt_tar in labels_tar:
+            # Get 2D IOU, Avoid far object paste on nearer object
+            iou_2d = box2d_iou((gt_add.xmin  , gt_add.ymin  , gt_add.xmax  , gt_add.ymax),
+                               (gt_tar.bbox_l, gt_tar.bbox_t, gt_tar.bbox_r, gt_tar.bbox_b))
+            if iou_2d > 0.0 and gt_add.z3d > gt_tar.z: return False
+            
+            # IoG check
+            b1_iog, b2_iog = box2d_iog((gt_add.xmin, gt_add.ymin, gt_add.xmax, gt_add.ymax),
+                                       (gt_tar.bbox_l, gt_tar.bbox_t, gt_tar.bbox_r, gt_tar.bbox_b))
+            if max(b1_iog, b2_iog) > 0.7 : return False
+            
+            # Get 3D IOU, Avoid 3D bbox collide with each other on BEV
+            gt_tar_corners_3d = get_3d_box((gt_tar.l, gt_tar.w, gt_tar.h), 
+                                            gt_tar.ry, 
+                                           (gt_tar.x, gt_tar.y, gt_tar.z))
+            try: # TODO this is because I can't solve ZeroDivision in iou_3d.py
+                iou_3db, iou_bev = box3d_iou(gt_tar_corners_3d, gt_add.corners_3d)
+            except Exception as e:
+                print("Error:", str(e))
+                iou_3db, iou_bev = (0, 0)
+                return False
+            if iou_bev > 0.0: return False
+        return True
+
+    def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None, depth_map=None):
+        
+        assert right_image == None, "Currently don't support right_image augment with copyPaste"
+
+        # Add objects in the target image
+        for obj_idx in range(self.num_add_obj):
+            random.shuffle(self.instance_pool)
+            gt_rst_new = None
+            gt_rst_old = None
+            for i_gt_add, gt_add in enumerate(self.instance_pool):
+                # Don't use object without segmented label
+                if self.use_seg and len(gt_add.seg_points) == 0: continue
+                #
+                gt_add_old = copy.deepcopy( gt_add )
+                gt_add_new = copy.deepcopy( gt_add )
+                
+                # Jitter Z direction
+                if self.use_z_jitter:
+                    cz_new = random.uniform( gt_add.cz*0.8, gt_add.cz*1.2 )
+                    s = gt_add.cz / cz_new
+                    
+                    d_bev_old = sqrt(gt_add.x3d**2 + gt_add.z3d**2)
+                    d_bev_new = sqrt(cz_new**2 - (gt_add.y3d - gt_add.h/2)**2)
+                    
+                    gt_add_new.x3d *= d_bev_new / d_bev_old
+                    gt_add_new.z3d *= d_bev_new / d_bev_old
+                    gt_add_new.P2 = p2
+                    gt_add_new.reprojection()
+                
+                # Check whether it's a good spawn by scanning through all the existed groundTrue
+                if not self.check_suitable(gt_add_new, labels): continue
+                
+                # Get aug image
+                img_src = self.imgs_src[gt_add_new.idx_img]
+                
+                img_tar_h, img_tar_w, _ = left_image.shape
+                img_src_h, img_src_w, _ = img_src.shape
+                
+                # Source image
+                patch_src = img_src[gt_add_old.ymin:gt_add_old.ymax,
+                                    gt_add_old.xmin:gt_add_old.xmax]
+                
+                patch_tar_w, patch_tar_h = (int(gt_add_new.xmax - gt_add_new.xmin),
+                                            int(gt_add_new.ymax - gt_add_new.ymin))
+
+                # Resize source patch to fit the target patch
+                patch_src = cv2.resize(patch_src, (patch_tar_w, patch_tar_h), interpolation=cv2.INTER_AREA)
+                if self.use_seg:
+                    old_h = gt_add_old.ymax - gt_add_old.ymin
+                    old_w = gt_add_old.xmax - gt_add_old.xmin
+                    for i, (xp, yp) in enumerate(gt_add_new.seg_points):
+                        gt_add_new.seg_points[i][0] *= (patch_tar_w/old_w)
+                        gt_add_new.seg_points[i][1] *= (patch_tar_h/old_h)
+
+                # 2D bbox saturation and crop image on the bournding
+                if gt_add_new.xmin < 0 :
+                    patch_src = patch_src[:, abs(gt_add_new.xmin):]
+                    gt_add_new.xmin = 0
+                if gt_add_new.ymin < 0 :
+                    patch_src = patch_src[abs(gt_add_new.ymin):, :]
+                    gt_add_new.ymin = 0
+                if gt_add_new.xmax > img_tar_w:
+                    patch_src = patch_src[:, :img_tar_w-gt_add_new.xmax]
+                    gt_add_new.xmax = img_tar_w
+                if gt_add_new.ymax > img_tar_h:
+                    patch_src = patch_src[:img_tar_h-gt_add_new.ymax, :]
+                    gt_add_new.ymax = img_tar_h
+                
+                # Check depth map
+                if self.use_scene_aware and self.check_depth_map(gt_add_new, depth_map): continue
+
+                gt_rst_old = gt_add_old
+                gt_rst_new = gt_add_new
+                break
+
+            # If couldn't find any augmented image, copy paste image without modification
+            if gt_rst_new == None:
+                # print(f"[WARNING] Cannot find suitable gt to add")
+                break
+            
+            # Paste the source instance on target image
+            if self.use_seg:
+                mask = np.zeros_like(patch_src[:, :, 1])
+                
+                obj_countor = []
+                for xp, yp in gt_rst_new.seg_points:
+                    obj_countor.append(np.array([[int(xp), int(yp)]], dtype=np.int32))
+
+                cv2.drawContours(mask, np.array([obj_countor]), -1, 255, -1)
+                left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax][mask == 255] = patch_src[mask == 255]
+            else:
+                # Add new object on augmented image and .txt
+                left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax] = SOLID_RATIO*patch_src + \
+                left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax]*(1-SOLID_RATIO)
+            
+            # Add new object's label to source gts
+            # label.append(gt_rst_new)
+            labels.append(KittiObj(gt_rst_new.__str__()))
+        
+        return left_image, right_image, p2, p3, labels, image_gt, lidar
 
 # Added by spiderkiller
 @AUGMENTATION_DICT.register_module
@@ -136,7 +319,6 @@ class RandomJit(object):
         
         return left_image, right_image, p2, p3, labels, image_gt, lidar
 
-
 # Added by spiderkiller
 @AUGMENTATION_DICT.register_module
 class CutOut(object):
@@ -164,7 +346,6 @@ class CutOut(object):
         
         return left_image, right_image, p2, p3, labels, image_gt, lidar
 
-
 @AUGMENTATION_DICT.register_module
 class ConvertToFloat(object):
     """
@@ -172,7 +353,6 @@ class ConvertToFloat(object):
     """
     def __call__(self, left_image, right_image=None, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
         return left_image.astype(np.float32), right_image if right_image is None else right_image.astype(np.float32), p2, p3, labels, image_gt, lidar
-
 
 @AUGMENTATION_DICT.register_module
 class Normalize(object):
@@ -196,6 +376,7 @@ class Normalize(object):
             right_image /= np.tile(self.stds, int(right_image.shape[2]/self.stds.shape[0]))
             right_image = right_image.astype(np.float32)
         return left_image, right_image, p2, p3, labels, image_gt, lidar
+
 @AUGMENTATION_DICT.register_module
 class Resize(object):
     """
@@ -688,7 +869,6 @@ class ConvertColor(object):
 
         return left_image, right_image, p2, p3, labels, image_gt, lidar
 
-
 @AUGMENTATION_DICT.register_module
 class RandomContrast(object):
     """
@@ -840,7 +1020,6 @@ class Augmentation(object):
 
     def __call__(self, left_image, right_image, p2=None, p3=None, labels=None, image_gt=None, lidar=None):
         return self.augment(left_image, right_image, p2, p3, labels, image_gt, lidar)
-
 
 class Preprocess(object):
     """

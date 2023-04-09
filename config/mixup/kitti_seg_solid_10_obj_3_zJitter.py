@@ -84,9 +84,10 @@ data = edict(
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
-    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_seg_solid_10_obj_3_zJitter', 'train.txt'),
-    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_seg_solid_10_obj_3_zJitter', 'val.txt'),
+    train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_seg_solid_10_obj_3_zJitter_split', 'train.txt'),
+    val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'kitti_seg_solid_10_obj_3_zJitter_split', 'val.txt'),
     use_right_image = False,
+    is_overwrite_anchor_file = False,
 )
 
 data.augmentation = edict(
@@ -169,6 +170,7 @@ detector.head = edict(
     loss_cfg        = head_loss,
     test_cfg        = head_test,
     exp             = cfg.exp,
+    data_cfg        = data,
 )
 detector.anchors = anchors
 detector.loss = head_loss

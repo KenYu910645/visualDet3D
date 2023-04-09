@@ -8,6 +8,8 @@ import math
 import numpy as np
 from numpy.linalg import inv
 from .utils import read_image, read_pc_from_bin, _lidar2leftcam, _leftcam2lidar, _leftcam2imgplane
+import cv2 
+
 # KITTI
 class KittiCalib:
     '''
@@ -209,19 +211,22 @@ class KittiData:
             idx(str %6d): data index e.g. "000000"
             output_dict: decide what to output
         '''
-        self.calib_path = os.path.join(root_dir, "calib", idx+'.txt')
-        self.image2_path = os.path.join(root_dir, "image_2", idx+'.png')
-        self.image3_path = os.path.join(root_dir, 'image_3', idx+'.png')
-        self.label2_path = os.path.join(root_dir, "label_2", idx+'.txt')
-        self.velodyne_path = os.path.join(root_dir, "velodyne", idx+'.bin')
+        self.calib_path    = os.path.join(root_dir, "calib",       idx+'.txt')
+        self.image2_path   = os.path.join(root_dir, "image_2",     idx+'.png')
+        self.image3_path   = os.path.join(root_dir, 'image_3',     idx+'.png')
+        self.label2_path   = os.path.join(root_dir, "label_2",     idx+'.txt')
+        self.velodyne_path = os.path.join(root_dir, "velodyne",    idx+'.bin')
+        self.depth_path    = os.path.join(root_dir, "image_depth", idx+'.png')
+        
         self.output_dict = output_dict
-        if self.output_dict is None:
+        if self.output_dict is None: # Control what will be output when read_data()
             self.output_dict = {
                 "calib": True,
                 "image": True,
                 "image_3": False,
                 "label": True,
-                "velodyne": True
+                "velodyne": True,
+                "depth": False,
             }
 
     def read_data(self):
@@ -238,13 +243,14 @@ class KittiData:
                       |
                 y<----.z
         '''
-        calib = KittiCalib(self.calib_path).read_calib_file() if self.output_dict["calib"] else None
-        image = read_image(self.image2_path) if self.output_dict["image"] else None
-        label = KittiLabel(self.label2_path).read_label_file() if self.output_dict["label"] else None
-        pc = read_pc_from_bin(self.velodyne_path) if self.output_dict["velodyne"] else None
+        calib = KittiCalib(self.calib_path).read_calib_file()     if self.output_dict["calib"]    else None
+        image = read_image(self.image2_path)                      if self.output_dict["image"]    else None
+        label = KittiLabel(self.label2_path).read_label_file()    if self.output_dict["label"]    else None
+        pc    = read_pc_from_bin(self.velodyne_path)              if self.output_dict["velodyne"] else None
+        depth = cv2.imread(self.depth_path, cv2.IMREAD_GRAYSCALE) if self.output_dict["depth"]    else None
+        
         if 'image_3' in self.output_dict and self.output_dict['image_3']:
             image_3 = read_image(self.image3_path) if self.output_dict["image_3"] else None
-
-            return calib, image, image_3, label, pc
+            return calib, image, image_3, label, pc, depth
         else:
-            return calib, image, label, pc
+            return calib, image, label, pc, depth

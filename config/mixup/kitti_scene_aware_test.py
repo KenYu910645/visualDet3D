@@ -11,8 +11,8 @@ trainer = edict(
     gpu = 0,
     max_epochs = 30,
     disp_iter = 50,
-    save_iter = 5,
-    test_iter = 10,
+    save_iter = 99,
+    test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -25,7 +25,9 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # "/data/kitti_obj/testing" # used in visualDet3D/data/.../dataset
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/data_augumentation/viz_da' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/mixup' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+# path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
+
 if not os.path.isdir(path.project_path):
     os.mkdir(path.project_path)
 path.project_path = os.path.join(path.project_path, 'Mono3D')
@@ -76,16 +78,16 @@ cfg.scheduler = scheduler
 
 ## data
 data = edict(
-    batch_size = 1,
-    num_workers = 1,
+    batch_size = 8,
+    num_workers = 8,
     rgb_shape = (288, 1280, 3),
     train_dataset = "KittiMonoDataset",
     val_dataset   = "KittiMonoDataset",
     test_dataset  = "KittiMonoTestDataset",
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'train.txt'),
     val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'val.txt'),
-    use_right_image = False, # True,
-    is_reproject    = False, # True
+    use_right_image = False,
+    is_overwrite_anchor_file = False,
 )
 
 data.augmentation = edict(
@@ -94,7 +96,6 @@ data.augmentation = edict(
     cropSize = (data.rgb_shape[0], data.rgb_shape[1]),
     crop_top = 100,
 )
-
 data.train_augmentation = [
     edict(type_name='CopyPaste', keywords=edict(use_seg=True, 
                                                 solid_ratio=1.0, 
@@ -105,11 +106,8 @@ data.train_augmentation = [
     # edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
     edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
     edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
-    # edict(type_name='RandomJit', keywords=edict(jit_upper_bound=0.2)),
-    # edict(type_name='RandomZoom', keywords=edict(scale_range=(0.8, 0.8))), # (0.8, 1.2)
-    # edict(type_name='CutOut', keywords=edict(num_hole=4, mask_width=32)),
     # edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
-    # edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
+    edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
 ]
 data.test_augmentation = [
     edict(type_name='ConvertToFloat'),
@@ -177,6 +175,7 @@ detector.head = edict(
     loss_cfg        = head_loss,
     test_cfg        = head_test,
     exp             = cfg.exp,
+    data_cfg        = data,
 )
 detector.anchors = anchors
 detector.loss = head_loss
