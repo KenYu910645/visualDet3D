@@ -160,7 +160,7 @@ class PerspectiveConv2d(nn.Module):
             offsets = torch.cat([ self.get_offset(P2[i].cpu().numpy()) for i in range(B) ], dim=0) # [8, 18, 18, 80]
         else:
             offsets = torch.cat([ self.get_offset(self.P2_A)           for _ in range(B) ], dim=0) # [8, 18, 18, 80]
-
+                
         x = torchvision.ops.deform_conv2d(input=x, 
                                           offset=offsets,
                                           weight=self.regular_conv.weight,
@@ -169,7 +169,6 @@ class PerspectiveConv2d(nn.Module):
                                           mask=None,
                                           stride=self.stride,)
         return x
-
 
 class PerspectiveConv2d_cubic(PerspectiveConv2d):
     def get_offset(self, P2):

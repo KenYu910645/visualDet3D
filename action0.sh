@@ -17,11 +17,11 @@
 # ./launchers/det_precompute.sh config/best/fpn_kmeans18_large_only.py train
 # ./launchers/train.sh config/best/fpn_kmeans18_large_only.py 1 fpn_kmeans18_large_only
 
-EXP_NAME=('pac_2d_offset_inconsist_check')
+EXP_NAME=('pac_test')
 
 for exp_name in "${EXP_NAME[@]}"
 do
-    ./launchers/det_precompute.sh config/pac/"$exp_name".py train
+    # ./launchers/det_precompute.sh config/pac/"$exp_name".py train
     ./launchers/train.sh config/pac/"$exp_name".py 1 "$exp_name"
 done
 

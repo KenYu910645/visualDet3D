@@ -175,11 +175,8 @@ detector.head = edict(
     test_cfg        = head_test,
     exp             = cfg.exp,
     data_cfg        = data,
-    num_pac_layer    = 1,
+    num_pac_layer   = 1,
     pac_mode        = "2d_offset",
-    adpative_P2     = True, 
-    offset_2d       = 32,
-    is_pac_bn_relu  = False, #True, # True
 )
 detector.anchors = anchors
 detector.loss = head_loss
