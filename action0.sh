@@ -1,9 +1,9 @@
-EXP_NAME=('pac_2d_offset_adaptiveP2_bnRelu_theta_edition')
+EXP_NAME=('baseline' 'cubic_pac' 'pac_layer2' 'pac_module')
 
 for exp_name in "${EXP_NAME[@]}"
 do
-    # ./launchers/det_precompute.sh config/pac_new/"$exp_name".py train
-    ./launchers/train.sh config/pac_new/"$exp_name".py 1 "$exp_name"
+    ./launchers/det_precompute.sh config/pac_theta_edition/"$exp_name".py train
+    ./launchers/train.sh config/pac_theta_edition/"$exp_name".py 1 "$exp_name"
 done
 
 # EXP_NAME=('baseline')

@@ -70,8 +70,7 @@ class PerspectiveConv2d(nn.Module):
                  stride=1,
                  padding=1,
                  bias=False,
-                 offset_2d=32,
-                 offset_3d=0.4,
+                 offset_2d=(32, 32),
                  input_shape=(18,80),
                  pad_mode="constant",
                  adpative_P2=False,):
@@ -84,7 +83,6 @@ class PerspectiveConv2d(nn.Module):
         self.stride = stride if type(stride) == tuple else (stride, stride)
         self.padding = padding
         self.mode = mode
-        self.offset_3d = offset_3d
         self.offset_2d = offset_2d
         self.h, self.w = input_shape
         self.D_RATIO = 16 # Downsamle ratio
@@ -128,8 +126,8 @@ class PerspectiveConv2d(nn.Module):
                 # 
                 slope = get_slope((u, v, AVG_Y3D_CENTER), P2)
                 
-                # Use Fix 2d offset, TODO, need to check this is good
-                dcx, dcy = (self.offset_2d, self.offset_2d)
+                # Use Fix 2d offset
+                dcx, dcy = self.offset_2d
                 theta = atan2(slope, 1)
                 dx, dy = (dcy*cos(theta), dcy*sin(theta))
                 for i, i_o in enumerate([-dy, -dcx-dx,   -dy, -dx,   -dy, dcx-dx,

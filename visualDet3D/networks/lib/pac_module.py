@@ -8,15 +8,15 @@ class PAC_module(nn.Module):
         mode = 2d_offset ,......
         '''
         super(PAC_module, self).__init__()
-        self.pac_d16 = nn.Sequential(PerspectiveConv2d(in_channels, in_channels//2, mode, offset_2d=16, kernel_size=3, stride=1, padding=1, bias=False, input_shape=(18,80), adpative_P2=True),
+        self.pac_d16 = nn.Sequential(PerspectiveConv2d(in_channels, in_channels//2, mode, offset_2d=(16, 16), kernel_size=3, stride=1, padding=1, bias=False, input_shape=(18,80), adpative_P2=True),
                                      nn.BatchNorm2d(in_channels//2),
                                      nn.ReLU(),) #TODO nn.ReLU(inplace=True)?
         
-        self.pac_d32 = nn.Sequential(PerspectiveConv2d(in_channels, in_channels//2, mode, offset_2d=32, kernel_size=3, stride=1, padding=1, bias=False, input_shape=(18,80), adpative_P2=True),
+        self.pac_d32 = nn.Sequential(PerspectiveConv2d(in_channels, in_channels//2, mode, offset_2d=(32, 32), kernel_size=3, stride=1, padding=1, bias=False, input_shape=(18,80), adpative_P2=True),
                                      nn.BatchNorm2d(in_channels//2),
                                      nn.ReLU(),)
         
-        self.pac_d64 = nn.Sequential(PerspectiveConv2d(in_channels, in_channels//2, mode, offset_2d=64, kernel_size=3, stride=1, padding=1, bias=False, input_shape=(18,80), adpative_P2=True),
+        self.pac_d64 = nn.Sequential(PerspectiveConv2d(in_channels, in_channels//2, mode, offset_2d=(64, 64), kernel_size=3, stride=1, padding=1, bias=False, input_shape=(18,80), adpative_P2=True),
                                      nn.BatchNorm2d(in_channels//2),
                                      nn.ReLU(),)
 

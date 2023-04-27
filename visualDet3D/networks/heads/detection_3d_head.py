@@ -49,7 +49,7 @@ class AnchorBasedDetection3DHead(nn.Module):
                        num_pac_layer:int=0,
                        pac_mode:str="",
                        offset_3d:float=0.4,
-                       offset_2d:int=32,
+                       offset_2d:tuple=(32, 32),
                        pad_mode:str="constant",
                        adpative_P2:bool=False,
                        cz_pred_mode:str="look_ground",
