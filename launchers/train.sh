@@ -14,6 +14,9 @@ GPUS=$2
 EXP_NAME=$3
 NUM_GPUS=$(($(echo $GPUS | grep -o ',' | wc -l) + 1)) # count number of ',' and plus one
 
+# echo $GPUS
+# echo $NUM_GPUS
+
 if [ $NUM_GPUS == 1 ]; then 
     echo -e "Number of GPUs being 1, will directly launch:\n\t python3 train --experiment_name=$EXP_NAME"
     CUDA_VISIBLE_DEVICES=$GPUS python3 scripts/train.py --config=$CONFIG_PATH --experiment_name=$EXP_NAME 

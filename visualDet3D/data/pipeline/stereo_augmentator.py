@@ -51,8 +51,8 @@ class CopyPaste(object):
         
         self.image_dir = "/home/lab530/KenYu/kitti/training/image_2/"
         self.depth_dir = "/home/lab530/KenYu/kitti/training/image_depth/"
-        self.instance_pool_path = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/Mono3D/output/training/instance_pool.pkl"
-        self.imgs_src_path = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/Mono3D/output/training/imgs_src.pkl"
+        self.instance_pool_path = "/home/lab530/KenYu/visualDet3D/exp_output/scene_aware/Mono3D/output/training/instance_pool.pkl"
+        self.imgs_src_path = "/home/lab530/KenYu/visualDet3D/exp_output/scene_aware/Mono3D/output/training/imgs_src.pkl"
         
         # Load Instance Pool
         print(f"Loading instance pool from {self.instance_pool_path}")
@@ -201,8 +201,8 @@ class CopyPaste(object):
                 left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax][mask == 255] = patch_src[mask == 255]
             else:
                 # Add new object on augmented image and .txt
-                left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax] = SOLID_RATIO*patch_src + \
-                left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax]*(1-SOLID_RATIO)
+                left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax] = self.solid_ratio*patch_src + \
+                left_image[gt_rst_new.ymin:gt_rst_new.ymax, gt_rst_new.xmin:gt_rst_new.xmax]*(1-self.solid_ratio)
             
             # Add new object's label to source gts
             # label.append(gt_rst_new)

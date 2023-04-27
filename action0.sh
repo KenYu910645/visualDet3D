@@ -1,6 +1,21 @@
+EXP_NAME=('pac_2d_offset_adaptiveP2_bnRelu_theta_edition')
 
-# ./launchers/det_precompute.sh config/data_augumentation/viz_da.py train
-# ./launchers/train.sh config/data_augumentation/add_cutout_2_hole.py 1 add_cutout_2_hole
+for exp_name in "${EXP_NAME[@]}"
+do
+    # ./launchers/det_precompute.sh config/pac_new/"$exp_name".py train
+    ./launchers/train.sh config/pac_new/"$exp_name".py 1 "$exp_name"
+done
+
+# EXP_NAME=('baseline')
+
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/iou/"$exp_name".py train
+#     ./launchers/train.sh config/iou/"$exp_name".py 1 "$exp_name"
+# done
+
+# ./launchers/det_precompute.sh config/best/das_test.py train
+# ./launchers/train.sh config/best/das_test.py 0 das_tests
 
 # data_augumentation/.py
 
@@ -17,13 +32,22 @@
 # ./launchers/det_precompute.sh config/best/fpn_kmeans18_large_only.py train
 # ./launchers/train.sh config/best/fpn_kmeans18_large_only.py 1 fpn_kmeans18_large_only
 
-EXP_NAME=('pac_test')
+# EXP_NAME=('kitti_box_solid_05_obj_2_zJitter')
 
-for exp_name in "${EXP_NAME[@]}"
-do
-    # ./launchers/det_precompute.sh config/pac/"$exp_name".py train
-    ./launchers/train.sh config/pac/"$exp_name".py 1 "$exp_name"
-done
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/scene_aware/"$exp_name".py train
+#     ./launchers/train.sh config/scene_aware/"$exp_name".py 1 "$exp_name"
+# done
+
+
+# EXP_NAME=('pac_module')
+
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/pac_new/"$exp_name".py train
+#     ./launchers/train.sh config/pac_new/"$exp_name".py 1 "$exp_name"
+# done
 
 # EXP_NAME=('baseline_inconsist_check' 'erase_back_ground_inconsist_check')
 

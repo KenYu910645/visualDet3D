@@ -99,15 +99,12 @@ class IoULoss(nn.Module):
     """Some Information about IoULoss"""
     def forward(self, preds:torch.Tensor, targs:torch.Tensor, eps:float=1e-8) -> torch.Tensor:
         """IoU Loss
-
         Args:
             preds (torch.Tensor): [x1, y1, x2, y2] predictions [*, 4]
             targs (torch.Tensor): [x1, y1, x2, y2] targets [*, 4]
-
         Returns:
             torch.Tensor: [-log(iou)] [*]
         """
-        
         # overlap
         lt = torch.max(preds[..., :2], targs[..., :2]) # Most left-top point of intersection
         rb = torch.min(preds[..., 2:], targs[..., 2:]) # Most right-bottom point of intersection
@@ -135,7 +132,6 @@ class DIoULoss(nn.Module):
         Returns:
             torch.Tensor: [-log(iou)] [*]
         """
-        
         # overlap
         lt = torch.max(preds[..., :2], targs[..., :2]) # Most left-top point of intersection
         rb = torch.min(preds[..., 2:], targs[..., 2:]) # Most right-bottom point of intersection

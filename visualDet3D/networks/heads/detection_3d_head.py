@@ -20,6 +20,9 @@ from visualDet3D.networks.lib.pac import PerspectiveConv2d, PerspectiveConv2d_cu
 from visualDet3D.networks.lib.dcn import DeformableConv2d
 from visualDet3D.networks.lib.rfb import BasicRFB
 from visualDet3D.networks.lib.aspp import ASPP
+from visualDet3D.networks.lib.pac_module import PAC_module
+from visualDet3D.networks.lib.das import LocalConv2d, DepthAwareSample
+
 class AnchorBasedDetection3DHead(nn.Module):
     def __init__(self, num_features_in:int=1024,
                        num_classes:int=3,
@@ -55,7 +58,9 @@ class AnchorBasedDetection3DHead(nn.Module):
                        is_seperate_noam:bool=True,
                        is_rfb:bool=False,
                        is_aspp:bool=False,
-                       is_cubic_pac:bool=False):
+                       is_cubic_pac:bool=False,
+                       is_pac_module:bool=False,
+                       is_das:bool=False,):
 
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
@@ -66,6 +71,8 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.loss_cfg = loss_cfg
         self.test_cfg  = test_cfg
         self.data_cfg = data_cfg
+        self.iou_type = getattr(self.loss_cfg, 'iou_type', "baseline")
+        print(f"self.iou_type = {self.iou_type}")
         self.build_loss(**loss_cfg)
         self.backprojector = BackProjection()
         self.clipper = ClipBoxes()
@@ -96,12 +103,11 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.is_rfb           = is_rfb
         self.is_aspp           = is_aspp
         self.is_cubic_pac    = is_cubic_pac
+        self.is_pac_module = is_pac_module
+        self.is_das = is_das
         
-        
-        self.loss_cfg.iou_type = getattr(self.loss_cfg, 'iou_type', "")
-        
+
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
-        print(f"iou_type = {self.loss_cfg.iou_type}")
         print(f"self.is_fpn_debug = {self.is_fpn_debug}")
         print(f"self.use_channel_attention = {self.use_channel_attention}")
         print(f"self.use_spatial_attention = {self.use_spatial_attention}")
@@ -126,6 +132,8 @@ class AnchorBasedDetection3DHead(nn.Module):
         print(f"is_rfb = {self.is_rfb}")
         print(f"is_aspp = {self.is_aspp}")
         print(f"is_cubic_pac = {self.is_cubic_pac}")
+        print(f"is_pac_module = {self.is_pac_module}")
+        print(f"is_das = {self.is_das}")
         
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -186,13 +194,9 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.focal_loss = SigmoidFocalLoss(gamma=focal_loss_gamma, balance_weights=self.balance_weights)
         self.smooth_L1_loss = ModifiedSmoothL1Loss(L1_regression_alpha)
 
-        # TODO
-        # if self.loss_cfg.iou_type == "iou":
-        #     self.loss_iou = IoULoss()
-        # elif self.loss_cfg.iou_type == "diou":
-        #     self.loss_iou = DIoULoss()
-        # elif self.loss_cfg.iou_type == "ciou":
-        #     self.loss_iou = CIoULoss()
+        if   self.iou_type == "iou" : self.loss_iou =  IoULoss ()
+        elif self.iou_type == "diou": self.loss_iou =  DIoULoss()
+        elif self.iou_type == "ciou": self.loss_iou =  CIoULoss()
         # else:
         #     self.loss_iou = IoULoss()
 
@@ -700,7 +704,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             if len(anno_j) == 0: # If this image doesn't contain any ground true, just skip it
                 cls_loss.append(torch.tensor(0).cuda().float())
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
-                # iou_loss.append(0.0) # TODO, iou_loss is bad 
+                iou_loss.append(reg_preds.new_zeros(1)[0])
                 dep_loss.append(reg_preds.new_zeros(1))
                 nom_loss.append(reg_preds.new_zeros(8))
                 n_pos_list.append(0)
@@ -782,7 +786,7 @@ class AnchorBasedDetection3DHead(nn.Module):
                             dep_loss_j = self.smooth_L1_loss(dep_target, dep_pred[pos_inds]) # [141, 1]
                         
                         elif self.cz_pred_mode == "oridinal_loss":
-                            raise NotImplementedError # TODO
+                            raise NotImplementedError
                         
                         # print(f"dep_loss_j.requires_grad = {dep_loss_j.requires_grad}")
                         dep_loss.append( dep_loss_j.mean(dim=0) * 3) # TODO, this 3 ratio is derived from regersssion_weight
@@ -800,17 +804,21 @@ class AnchorBasedDetection3DHead(nn.Module):
                         hdg_loss_j = self.bce_loss      (hdg_pred[pos_inds], hdg_target)
                         reg_loss.append( (torch.cat([reg_loss_j, hdg_loss_j, nom_loss_j], dim=1)*self.regression_weight).mean(dim=0) )
                     else:
-                        reg_loss_j = self.smooth_L1_loss(reg_target, reg_pred[pos_inds]) # This is the first time, loss() used prediction result
+                        if self.iou_type == "baseline":
+                            reg_loss_j = self.smooth_L1_loss(reg_target, reg_pred[pos_inds]) # This is the first time, loss() used prediction result
+                        else: # Disable L1 2dbbox
+                            reg_loss_j = self.smooth_L1_loss(reg_target[:, 4:], reg_pred[pos_inds][:, 4:])
                         hdg_loss_j = self.bce_loss      (hdg_pred[pos_inds], hdg_target)
                         reg_loss.append( (torch.cat([reg_loss_j, hdg_loss_j            ], dim=1)*self.regression_weight).mean(dim=0) )
                     
                     ####################
                     ### Get IOU Loss ###
                     ####################
-                    # pos_prediction_decoded, mask = self._decode(pos_anchor, reg_pred[pos_inds],  ank_zscwhl_j[pos_inds], label_index, pos_alpha_score)
-                    # pos_target_decoded, _        = self._decode(pos_anchor, reg_target,    ank_zscwhl_j[pos_inds], label_index, pos_alpha_score)
-                    # loss_iou_j = self.loss_iou(pos_prediction_decoded[mask, :4], pos_target_decoded[mask, :4])
-                    # iou_loss.append(loss_iou_j.mean().item())
+                    if self.iou_type != "baseline":
+                        pos_prediction_decoded, mask = self._decode(pos_2dbox, reg_pred[pos_inds],  ank_zscwhl_j[pos_inds], label_index, hdg_pred[pos_inds])
+                        pos_target_decoded    , _    = self._decode(pos_2dbox, reg_target        ,  ank_zscwhl_j[pos_inds], label_index, hdg_pred[pos_inds])
+                        loss_iou_j = self.loss_iou(pos_prediction_decoded[mask, :4], pos_target_decoded[mask, :4])
+                        iou_loss.append(loss_iou_j.mean(dim=0))
                     
                     #####################
                     ### Get NOAM Loss ###
@@ -823,7 +831,7 @@ class AnchorBasedDetection3DHead(nn.Module):
             else:
                 reg_loss.append(reg_preds.new_zeros(self.num_regression_loss_terms))
                 n_pos_list.append(anno_j.shape[0])
-                # iou_loss.append(0.0)
+                if self.iou_type != "baseline": iou_loss.append(reg_preds.new_zeros(1)[0])
                 if dep_preds != None: dep_loss.append(reg_preds.new_zeros(1))
                 if nom_preds != None: nom_loss.append(reg_preds.new_zeros(8))
 
@@ -834,8 +842,8 @@ class AnchorBasedDetection3DHead(nn.Module):
             cls_loss.append(self.focal_loss(cls_pred, labels).sum() / (len(pos_inds) + len(neg_inds)))
         
         cls_loss = torch.stack(cls_loss).mean(dim=0, keepdim=True)
-        reg_loss = torch.stack(reg_loss, dim=0) #[B, 12]
-        # iou_loss = reg_loss.new(iou_loss)
+        reg_loss = torch.stack(reg_loss, dim=0) # [B, 12]
+        if self.iou_type != "baseline": iou_loss = torch.stack(iou_loss, dim=0)
         
         # print(f"Befroe dep_loss.requires_grad = {dep_loss[0].requires_grad}")
         if dep_preds != None: dep_loss = torch.stack(dep_loss, dim=0)
@@ -843,12 +851,13 @@ class AnchorBasedDetection3DHead(nn.Module):
         
         # Weight regression loss by number of ground true in each images
         pos_weight = reg_pred.new(n_pos_list).unsqueeze(1) #[B, 1]
-        reg_loss_weighted = torch.sum( reg_loss * pos_weight / (torch.sum(pos_weight) + 1e-6), dim=0)
+        reg_loss_weighted = torch.sum(reg_loss * pos_weight / (torch.sum(pos_weight) + 1e-6), dim=0)
         reg_loss          = reg_loss_weighted.mean(dim=0, keepdim=True)
         
         # Weight IoU loss by number of ground true in each images
-        # weighted_iou_losses = torch.sum(pos_weight * iou_loss / (torch.sum(pos_weight) + 1e-6), dim=0)
-        # iou_loss = weighted_iou_losses.mean(dim=0, keepdim=True)
+        if self.iou_type != "baseline":
+            iou_loss_weighted = torch.sum(iou_loss * pos_weight / (torch.sum(pos_weight) + 1e-6), dim=0)
+            iou_loss          = iou_loss_weighted.mean(dim=0, keepdim=True)
 
         # Weight Depth loss by number of ground true in each images
         if dep_preds != None:
@@ -868,6 +877,11 @@ class AnchorBasedDetection3DHead(nn.Module):
         if self.is_noam_loss and self.is_seperate_noam:
             log_dict['1/nom_loss']    = nom_loss
             log_dict['1/total_loss'] += nom_loss
+        if self.iou_type != "baseline":
+            log_dict['1/iou_loss']    = iou_loss
+            log_dict['1/total_loss'] += iou_loss
+            # print(reg_loss_weighted)
+            reg_loss_weighted = torch.cat((reg_loss_weighted.new_zeros(4), reg_loss_weighted), dim=0)
         log_dict['2/dx']     = reg_loss_weighted[0]
         log_dict['2/dy']     = reg_loss_weighted[1]
         log_dict['2/dw']     = reg_loss_weighted[2]
@@ -978,6 +992,10 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                 
             print(f"self.pac_layers = {self.pac_layers}")
         
+        if self.is_pac_module:
+            self.pac_layers = PAC_module(num_features_in, num_features_in, "2d_offset")
+            print(f"self.pac_layers = {self.pac_layers}")
+        
         if self.is_rfb:
             self.RFB_layer = BasicRFB(1024, 1024, scale = 1.0, visual=2)
         
@@ -999,38 +1017,63 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         #########################################
         ### Classification Branch Declaration ###
         #########################################
-        self.cls_feature_extraction = nn.Sequential(
-            nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
-            nn.Dropout2d(0.3),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(cls_feature_size, cls_feature_size, kernel_size=3, padding=1),
-            nn.Dropout2d(0.3),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(cls_feature_size, num_anchors*num_cls_output, kernel_size=3, padding=1),
-            AnchorFlatten(num_cls_output)
-        )
-        self.cls_feature_extraction[-2].weight.data.fill_(0)
-        self.cls_feature_extraction[-2].bias.data.fill_(0)
-
+        if self.is_das:
+            self.cls_feature_extraction = nn.Sequential(
+                nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
+                nn.Dropout2d(0.3),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(cls_feature_size, cls_feature_size, kernel_size=3, padding=1),
+                nn.Dropout2d(0.3),
+                nn.ReLU(inplace=True),
+                nn.Upsample(scale_factor=2, mode='nearest'),
+                DepthAwareSample(cls_feature_size, num_cls_output*num_anchors, num_cls_output, kernel_size=3, padding=1),
+            )
+        else:
+            self.cls_feature_extraction = nn.Sequential(
+                nn.Conv2d(num_features_in, cls_feature_size, kernel_size=3, padding=1),
+                nn.Dropout2d(0.3),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(cls_feature_size, cls_feature_size, kernel_size=3, padding=1),
+                nn.Dropout2d(0.3),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(cls_feature_size, num_anchors*num_cls_output, kernel_size=3, padding=1),
+                AnchorFlatten(num_cls_output)
+            )
+            self.cls_feature_extraction[-2].weight.data.fill_(0)
+            self.cls_feature_extraction[-2].bias.data.fill_(0)
+        
         print(f"GroundAwareHead self.exp = {self.exp}")
         assert self.exp != "no_look_ground", f"self.exp == no_look_ground, this setting is not supported anymore, because it's worse than baseline"
 
         #####################################
         ### Regression Branch Declaration ###
         #####################################
-        self.reg_feature_extraction = nn.Sequential(
-            LookGround(num_features_in, self.exp),
-            nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
-            nn.BatchNorm2d(reg_feature_size),
-            nn.ReLU(),
-            nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
-            nn.BatchNorm2d(reg_feature_size),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
-            AnchorFlatten((num_reg_output))
-        )
-        self.reg_feature_extraction[-2].weight.data.fill_(0)
-        self.reg_feature_extraction[-2].bias.data.fill_(0)
+        if self.is_das:
+            self.reg_feature_extraction = nn.Sequential(
+                LookGround(num_features_in, self.exp),
+                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(),
+                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(inplace=True),
+                nn.Upsample(scale_factor=2, mode='nearest'),
+                DepthAwareSample(reg_feature_size, num_anchors*num_reg_output, num_reg_output, kernel_size=3, padding=1),
+            )
+        else:
+            self.reg_feature_extraction = nn.Sequential(
+                LookGround(num_features_in, self.exp),
+                nn.Conv2d(num_features_in, reg_feature_size, 3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(),
+                nn.Conv2d(reg_feature_size, reg_feature_size, kernel_size=3, padding=1),
+                nn.BatchNorm2d(reg_feature_size),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(reg_feature_size, num_anchors*num_reg_output, kernel_size=3, padding=1),
+                AnchorFlatten((num_reg_output))
+            )
+            self.reg_feature_extraction[-2].weight.data.fill_(0)
+            self.reg_feature_extraction[-2].bias.data.fill_(0)
 
         ################################
         ### Depth Branch Declaration ###
@@ -1080,7 +1123,11 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             self.noam_feature_extraction[-2].weight.data.fill_(0)
             self.noam_feature_extraction[-2].bias.data.fill_(0)
         
+        
     def forward(self, inputs):
+        
+        # print(f"[detection_3d_head.py] inputs['features'] = {inputs['features'].shape}")
+        
         ########################
         ### Attention Module ###
         ########################
@@ -1103,6 +1150,9 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
         if self.num_pac_layer != 0:
             for i in range(self.num_pac_layer):
                 inputs['features'] = self.pac_layers[i](inputs)
+        
+        if self.is_pac_module:
+            inputs['features'] = self.pac_layers(inputs)
     
         if self.is_rfb:
             inputs['features'] = self.RFB_layer(inputs['features'])

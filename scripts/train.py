@@ -175,9 +175,11 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
     ## timer is used to estimate eta
     timer = Timer()
 
-
-    global_step = 0
+    # Record the current best validation evaluation result
+    best_result = (-1, -1, -1, -1, -1, -1, -1, -1, -1) # 3d_e, 3d_m, 3d_h, bev_e, bev_m, bev_h, bbox_e, bbox_m, bbox_h
+    best_epoch  = -1
     
+    global_step = 0
     for epoch_num in range(cfg.trainer.max_epochs):
         ## Start training for one epoch
         detector.train()
@@ -223,14 +225,26 @@ def main(config="config/config.py", experiment_name="default", world_size=1, loc
         ## test model in main process if needed
         if is_evaluating and evaluate_detection is not None and cfg.trainer.test_iter > 0 and (epoch_num + 1) % cfg.trainer.test_iter == 0:
             print("\n/**** start testing after training epoch {} ******/".format(epoch_num))
-            evaluate_detection(cfg, detector.module if is_distributed else detector, dataset_val, writer, epoch_num)
+            eval_result = evaluate_detection(cfg, detector.module if is_distributed else detector, dataset_val, writer, epoch_num)
             print("/**** finish testing after training epoch {} ******/".format(epoch_num))
-
+            
+            # check whether is the best run, don't consider 2d bbox result
+            if sum(eval_result[:6])/len(eval_result[:6]) > sum(best_result[:6])/len(best_result[:6]):
+                best_result = eval_result
+                best_epoch  = epoch_num
+                print("This is the new best validation result")
+                
         if is_distributed:
             torch.distributed.barrier() # wait untill all finish a epoch
 
         if is_logging:
             writer.flush()
+    
+    print(f"Train finish, the best_epoch is {best_epoch}")
+    print(f"Best validation evaluation result:")
+    print(f"3d_e, 3d_m, 3d_h, bev_e, bev_m, bev_h, bbox_e, bbox_m, bbox_h: {best_result}")
+    writer.add_text("best validation result", str(best_result))
+    writer.flush()
 
 if __name__ == '__main__':
     Fire(main)

@@ -12,7 +12,7 @@ trainer = edict(
     max_epochs = 30,
     disp_iter = 10,
     save_iter = 5,
-    test_iter = 5,
+    test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/kitti/testing' # ""
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/iou/diou' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/iou' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 # path.pretrained_checkpoint = "/home/lab530/KenYu/visualDet3D/exp_output/mixup/kitti_mixup_1/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth"
 
 if not os.path.isdir(path.project_path):
@@ -89,6 +89,7 @@ data = edict(
     use_right_image = False,
     max_occlusion = 2, # 999, # TODO disable filting object
     min_z        = 3,
+    is_overwrite_anchor_file = False,
 )
 
 data.augmentation = edict(
@@ -135,7 +136,7 @@ head_loss = edict(
     focal_loss_gamma = 2.0,
     match_low_quality=False,
     balance_weight   = [20.0],
-    regression_weight = [1, 1, 1, 1, 1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
+    regression_weight = [1, 1, 3, 1, 1, 0.5, 0.5, 0.5, 1], #[x, y, w, h, cx, cy, z, sin2a, cos2a, w, h, l]
     iou_type = "diou", # "iou", "ciou"
 )
 head_test = edict(
@@ -165,7 +166,7 @@ head_layer = edict(
     reg_feature_size=1024,
 )
 detector.head = edict(
-    num_regression_loss_terms=13,
+    num_regression_loss_terms=9,
     preprocessed_path=path.preprocessed_path,
     num_classes     = len(cfg.obj_types),
     anchors_cfg     = anchors,

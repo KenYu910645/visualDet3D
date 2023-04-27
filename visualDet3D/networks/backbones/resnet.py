@@ -54,6 +54,9 @@ class BasicBlock(nn.Module):
 
 
 class Bottleneck(nn.Module):
+    '''
+    reference: https://github.com/pytorch/vision/blob/main/torchvision/models/resnet.py
+    '''
     expansion = 4
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, dilation=1):
@@ -114,10 +117,13 @@ class ResNet(nn.Module):
                        norm_eval:bool=True,
                        exp:str='',
                        use_bam_in_resnet:bool=False,
+                       drop_last_downsample:bool=False,
                        ):
         self.exp = exp
         self.use_bam_in_resnet = use_bam_in_resnet
+        self.drop_last_downsample = drop_last_downsample
         print(f"self.use_bam_in_resnet = {self.use_bam_in_resnet}")
+        print(f"self.drop_last_downsample = {self.drop_last_downsample}")
         self.inplanes = 64
         super(ResNet, self).__init__()
 
@@ -130,10 +136,11 @@ class ResNet(nn.Module):
         self.norm_eval = norm_eval
         assert max(out_indices) < num_stages
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1      = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.coordconv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False) # This is for exp B
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
+        
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         for i in range(num_stages):
             setattr(self, f"layer{i+1}", self._make_layer(block, self.planes[i], layers[i], stride=self.strides[i], dilation=self.dilations[i]))
@@ -152,6 +159,11 @@ class ResNet(nn.Module):
             self.bam2 = BAM(128*block.expansion)
             self.bam3 = BAM(256*block.expansion)
         
+        # print(f"self.layer1 = {self.layer1}")
+        # print(f"self.layer2 = {self.layer2}")
+        # print(f"self.layer3 = {self.layer3}")
+        # print(f"self.layer4 = {self.layer4}")
+        
         self.train()
 
     def _make_layer(self, block, planes, blocks, stride=1, dilation=1):
@@ -162,7 +174,7 @@ class ResNet(nn.Module):
                           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
-
+        
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample))
         self.inplanes = planes * block.expansion
@@ -204,17 +216,28 @@ class ResNet(nn.Module):
     def forward(self, img_batch):
         
         outs = []
-        # For Experiment B
-        if self.exp == 'B':
+        
+        #############
+        ### Conv1 ###
+        #############
+        if self.exp == 'B':# For Experiment B
             x = self.coordconv1(img_batch) # 5 channels
         else:
             x = self.conv1(img_batch) # Original, 3 channels
         x = self.bn1(x)
         x = self.relu(x)
         
+        ###############
+        ### Conv2_x ###
+        ###############
         if -1 in self.out_indices:
             outs.append(x)
         x = self.maxpool(x)
+        
+        # self.layer1 = conv2_x (3  layers) -> 1/4
+        # self.layer2 = conv3_x (4  layers) -> 1/8
+        # self.layer3 = conv4_x (23 layers) -> 1/16
+        # self.layer4 = conv5_x (3  layers) -> 1/32
         
         # print(f"self.num_stages = {self.num_stages}") # self.num_stages = 3
         for i in range(self.num_stages):

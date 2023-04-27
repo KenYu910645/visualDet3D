@@ -121,11 +121,9 @@ def evaluate_kitti_obj(cfg:EasyDict,
     )
 
     eval_lines = result_texts[0].splitlines()
-    bev_result = [float(i) for i in eval_lines[2].split(':')[1].split(',')]
-    # print(bev_result) # [6.13, 7.09, 8.24]
+    bbox_result   = [float(i) for i in eval_lines[1].split(':')[1].split(',')]
+    bev_result    = [float(i) for i in eval_lines[2].split(':')[1].split(',')]
     threeD_result = [float(i) for i in eval_lines[3].split(':')[1].split(',')]
-    # print(threeD_result) # [6.13, 7.09, 8.23]
-
     # I think this is bad because current classes is weird 
     # result_texts = evaluate(
     #     label_path=os.path.join(cfg.path.data_path, 'label_2'),
@@ -147,6 +145,9 @@ def evaluate_kitti_obj(cfg:EasyDict,
             writer.add_scalar('val/3d_hard',  threeD_result[2], epoch_num)
             writer.add_text("validation result {}".format(class_index), result_text.replace(' ', '&nbsp;').replace('\n', '  \n'), epoch_num + 1)
         print(result_text)
+    return (threeD_result[0], threeD_result[1], threeD_result[2],
+            bev_result   [0], bev_result   [1], bev_result   [2],
+            bbox_result  [0], bbox_result  [1], bbox_result  [2])
 
 def test_one(cfg, index, fn_list, dataset, model, test_func, backprojector:BackProjection, projector:BBox3dProjector, result_path):
     data = dataset[index]

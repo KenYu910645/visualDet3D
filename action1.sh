@@ -1,5 +1,14 @@
-./launchers/det_precompute.sh config/loss/noam_combine_regress_reg2048.py train
-./launchers/train.sh config/loss/noam_combine_regress_reg2048.py 1 noam_combine_regress_reg2048
+
+# ./launchers/det_precompute.sh config/iou/iou.py train
+# ./launchers/train.sh config/iou/iou.py 1 iou
+
+EXP_NAME=('das_test')
+
+for exp_name in "${EXP_NAME[@]}"
+do
+    ./launchers/det_precompute.sh config/das/"$exp_name".py train
+    # ./launchers/train.sh config/das/"$exp_name".py 0 "$exp_name"
+done
 
 # Preprocessing
 # ./launchers/det_precompute.sh config/data_augumentation/baseline.py train

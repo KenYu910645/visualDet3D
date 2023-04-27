@@ -3,8 +3,23 @@ import numpy as np
 import torch
 import torch.nn as nn
 import os
+import pickle
+
+def load_from_pkl_or_npy(file_path):
+    if   file_path.split(".")[-1] == "npy":
+        print(f"[anchors.py] Load npy file from {file_path}")
+        return np.load(file_path)
+    
+    elif file_path.split(".")[-1] == "pkl":
+        print(f"[anchors.py] Load pkl file from {file_path}")
+        with open(file_path, 'rb') as f: return pickle.load(f)
+    
+    else:
+        raise NotImplementedError
+
 class Anchors(nn.Module):
-    """ Anchor modules for multi-level dense output.
+    """ 
+    Anchor modules for multi-level dense output.
     """
     def __init__(self, preprocessed_path:str,
                        pyramid_levels:List[int], 
@@ -18,9 +33,9 @@ class Anchors(nn.Module):
                        filter_y_threshold_min_max:Optional[Tuple[float, float]]=(-0.5, 1.8), 
                        filter_x_threshold:Optional[float]=40.0,
                        anchor_prior_channel=6,
-                       external_pixelwise_anchor:str="",
-                       is_pyrimid_external_anchor:bool=False,
-                       external_pixelwise_only_2d_anchor:str="",):
+                       is_das:bool=False,
+                       external_anchor_path:str="",
+                       anchor_prior:bool=True,):
         super(Anchors, self).__init__()
 
         self.pyramid_levels = pyramid_levels
@@ -30,154 +45,172 @@ class Anchors(nn.Module):
         self.scales = scales
         self.shape = None
         self.P2 = None
-        self.readConfigFile = readConfigFile
+        self.is_training_process = readConfigFile
         self.scale_step = 1 / (np.log2(self.scales[1]) - np.log2(self.scales[0]))
-        print(f"self.readConfigFile = {self.readConfigFile}") # True, False during preprocessing
-        self.external_pixelwise_anchor = external_pixelwise_anchor
-        self.is_pyrimid_external_anchor = is_pyrimid_external_anchor
-        self.external_pixelwise_only_2d_anchor = external_pixelwise_only_2d_anchor
-        print(f"external_pixelwise_only_2d_anchor = {self.external_pixelwise_only_2d_anchor}")
+        print(f"[anchors.py] self.is_training_process = {self.is_training_process}") # True during training, False during preprocessing
+        
+        self.external_anchor_path = external_anchor_path
+        self.anchor_prior = anchor_prior
+        print(f"[anchors.py] external_anchor_path = {self.external_anchor_path}")
+        print(f"[anchors.py] self.anchor_prior = {anchor_prior}")
+        self.is_das = is_das
 
-        if external_pixelwise_only_2d_anchor != "": # Only define 2d bbox no std and means
-            if is_pyrimid_external_anchor:
-                import pickle
-                with open(os.path.join(external_pixelwise_only_2d_anchor, "2dbbox.pkl"), 'rb') as f:
-                    self.bbox2d_npy = pickle.load(f)
-            else:
-                self.bbox2d_npy = np.load( os.path.join(external_pixelwise_only_2d_anchor, "2dbbox.npy"))
-                print(f"Load npy file from {external_pixelwise_only_2d_anchor}")
+        self.anchors_mean_original = np.zeros([len(obj_types), len(self.scales), len(self.ratios), anchor_prior_channel])
+        self.anchors_std_original  = np.zeros([len(obj_types), len(self.scales), len(self.ratios), anchor_prior_channel])
+        self.anchors_mean_original = np.zeros([len(obj_types), len(self.scales) * len(self.pyramid_levels), len(self.ratios), anchor_prior_channel])
+        self.anchors_std_original  = np.zeros([len(obj_types), len(self.scales) * len(self.pyramid_levels), len(self.ratios), anchor_prior_channel])
         
-        if external_pixelwise_anchor != "":
-            if is_pyrimid_external_anchor:
-                import pickle
-                with open(os.path.join(external_pixelwise_anchor, "mean.pkl"), 'rb') as f:
-                    self.mean_npy = pickle.load(f)
-                with open(os.path.join(external_pixelwise_anchor, "std.pkl"), 'rb') as f:
-                    self.std_npy = pickle.load(f)
-                with open(os.path.join(external_pixelwise_anchor, "2dbbox.pkl"), 'rb') as f:
-                    self.bbox2d_npy = pickle.load(f)
-            else:
-                self.mean_npy   = np.load( os.path.join(external_pixelwise_anchor, "mean.npy")) # (20, 6)
-                self.std_npy    = np.load( os.path.join(external_pixelwise_anchor, "std.npy")) # (20 ,6)
-                self.bbox2d_npy = np.load( os.path.join(external_pixelwise_anchor, "2dbbox.npy"))
-                # print(self.bbox2d_npy)
-                print(f"Load npy file from {external_pixelwise_anchor}")
-            # self.mean_npy   = np.load( os.path.join(external_pixelwise_anchor, "mean.npy"), allow_pickle=True) # (20, 6)
-            # self.std_npy    = np.load( os.path.join(external_pixelwise_anchor, "std.npy"), allow_pickle=True) # (20 ,6)
-            # self.bbox2d_npy = np.load( os.path.join(external_pixelwise_anchor, "2dbbox.npy"), allow_pickle=True)
-            # print(self.bbox2d_npy)
-            print(f"Load npy file from {external_pixelwise_anchor}")
-        else:
-            if self.readConfigFile:
-                self.anchors_mean_original = np.zeros([len(obj_types), len(self.scales) * len(self.pyramid_levels), len(self.ratios), anchor_prior_channel])
-                self.anchors_std_original  = np.zeros([len(obj_types), len(self.scales) * len(self.pyramid_levels), len(self.ratios), anchor_prior_channel])
-                # print(f"self.anchors_mean_original = {self.anchors_mean_original.shape}") # (1, 16, 2, 6)
-                # print(f"self.anchors_std_original = {self.anchors_std_original.shape}") # (1, 16, 2, 6)
-                
-                # Load mean and std which calcualted during preprocessing
-                save_dir = os.path.join(preprocessed_path, 'training')
-                for i in range(len(obj_types)):
-                    npy_file = os.path.join(save_dir,'anchor_mean_{}.npy'.format(obj_types[i]))
-                    print(f"[Anchor.py] Loading {npy_file}") # (16, 2, 6)
-                    self.anchors_mean_original[i]  = np.load(npy_file) #[16, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
-                    print(self.anchors_mean_original[i].shape)
-                    
-                    std_file = os.path.join(save_dir,'anchor_std_{}.npy'.format(obj_types[i]))
-                    print(f"[Anchor.py] Loading {std_file}")
-                    self.anchors_std_original[i] = np.load(std_file) #[16, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
+        if self.is_training_process: # For training process
+            # Load mean and std file that calcualted during preprocessing
+            self.anchors_avg_original = []
+            self.anchors_std_original = []
+            for i in range(len(obj_types)):
+                npy_file = os.path.join(os.path.join(preprocessed_path, 'training', f'anchor_mean_{obj_types[i]}.npy'))
+                std_file = os.path.join(os.path.join(preprocessed_path, 'training', f'anchor_std_{obj_types[i]}.npy'))
+                print(f"[Anchor.py] Loading {npy_file}") # (16, 2, 6)
+                print(f"[Anchor.py] Loading {std_file}") # (16, 2, 6)
+                self.anchors_avg_original.append( np.load(npy_file) ) # [16, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
+                self.anchors_std_original.append( np.load(std_file) ) # [16, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
+                # self.anchors_avg_original[i] = np.load(npy_file) #[16, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
+                # self.anchors_std_original[i] = np.load(std_file) #[16, 2, 6] #[z,  sinalpha, cosalpha, w, h, l,]
+            self.anchors_avg_original = np.array(self.anchors_avg_original) # (1, 32, 6)
+            self.anchors_std_original = np.array(self.anchors_std_original) # (1, 32, 6)
+            print(f"self.anchors_avg_original = {self.anchors_avg_original.shape}") # (1, 32, 6)
+            print(f"self.anchors_std_original = {self.anchors_std_original.shape}") # (1, 32, 6)
         
+        #######################
+        ### External Anchor ###
+        #######################, Get anchor from other sources
+        if self.external_anchor_path != "":
+            '''
+            You need to pass in three files 
+            2dbbox: (num_anchor, 4), [x1, y1, x2, y2]
+            mean  : (num_anchor, 6), [z, sin2a, cos2a, w, h, l]
+            std   : (num_anchor, 6), [z, sin2a, cos2a, w, h, l]
+            '''
+            anchor_fns = [os.path.join(self.external_anchor_path, fns) for fns in os.listdir(self.external_anchor_path)]
+            print(f"Total {len(anchor_fns)} anchor files found in {self.external_anchor_path}")
+            
+            assert len(anchor_fns) == 1 or len(anchor_fns) == 3, "Too few or too much files, can only support one 2ddbox file or three files"
+            
+            # Load 2dbbox anchor file
+            self.bbox2d_npy   = load_from_pkl_or_npy( next(f for f in anchor_fns if "2dbbox" in f) )
+            
+            # Load mean anchor file
+            if anchor_prior:
+                self.mean_npy = None
+                self.std_npy  = None
+            else:
+                self.mean_npy = load_from_pkl_or_npy( next(f for f in anchor_fns if "mean" in f) )
+                self.std_npy  = load_from_pkl_or_npy( next(f for f in anchor_fns if "std"  in f) )
+
         self.filter_y_threshold_min_max = filter_y_threshold_min_max
         self.filter_x_threshold = filter_x_threshold
 
     def anchors2indexes(self, anchors:np.ndarray)->Tuple[np.ndarray, np.ndarray]:
         """
+            This will return the index in the 32 anchors
             computations in numpy: anchors[N, 4]
             return: sizes_int [N,]  ratio_ints [N, ]
         """
         # print(f"np.array(self.sizes) = {np.array(self.sizes)}")
         # print(f"np.array(self.scales) = {np.array(self.scales)}")
-        sizes = np.sqrt((anchors[:, 2] - anchors[:, 0]) * (anchors[:, 3] - anchors[:, 1])) # area
-        sizes_diff = sizes - (np.array(self.sizes) * np.array(self.scales))[:, np.newaxis]
-        sizes_int = np.argmin(np.abs(sizes_diff), axis=0)
+        # print(f"anchors = {anchors.shape}")
+        # Find the the closert sizes
+        if self.external_anchor_path == "":
+            sizes = np.sqrt((anchors[:, 2] - anchors[:, 0]) * (anchors[:, 3] - anchors[:, 1])) # area
+            if self.is_das:
+                sizes_diff = sizes - (np.array(self.sizes[0]) * np.array(self.scales))[:, np.newaxis]
+            else:
+                sizes_diff = sizes - (np.array(self.sizes   ) * np.array(self.scales))[:, np.newaxis]
+            sizes_int = np.argmin(np.abs(sizes_diff), axis=0)
 
-        ratio =  (anchors[:, 3] - anchors[:, 1]) / (anchors[:, 2] - anchors[:, 0]) # aspect ratio
-        ratio_diff = ratio - np.array(self.ratios)[:, np.newaxis]
-        ratio_int = np.argmin(np.abs(ratio_diff), axis=0)
-        return sizes_int, ratio_int
+            ratio =  (anchors[:, 3] - anchors[:, 1]) / (anchors[:, 2] - anchors[:, 0]) # aspect ratio
+            ratio_diff = ratio - np.array(self.ratios)[:, np.newaxis]
+            ratio_int = np.argmin(np.abs(ratio_diff), axis=0)
 
-    def forward(self, image:torch.Tensor, calibs:List[np.ndarray]=[], is_filtering=False):
+            return sizes_int, ratio_int
+
+    def forward(self, image:torch.Tensor, calibs:List[np.ndarray]=[], is_filtering=False): 
         # print(f"[anchor.py] is_filtering = {is_filtering}")
         
         shape = image.shape[2:] # torch.Size([288, 1280])
-        if self.shape is None or not (shape == self.shape): # This block will only execute once
-            self.shape = image.shape[2:]
-            
+        if self.shape is None or not (shape == self.shape): # This block will only execute once during training
+            self.shape  = image.shape[2:]
             image_shape = image.shape[2:]
             image_shape = np.array(image_shape)
             image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in self.pyramid_levels]
-            
             print(f"[anchors.py] image_shapes = {image_shapes}") # [array([18, 80]), .....]
+            
             # compute anchors over all pyramid levels
             all_anchors = np.zeros((0, 4)).astype(np.float32)
-
             for idx, p in enumerate(self.pyramid_levels):
-                if self.external_pixelwise_anchor == "":
-                    if self.external_pixelwise_only_2d_anchor != "":
-                        if self.is_pyrimid_external_anchor:
-                            anchors = self.bbox2d_npy[p]
-                        else:
-                            anchors = self.bbox2d_npy
-                    else:
-                        anchors = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales)
-                else:
-                    if self.is_pyrimid_external_anchor:
-                        anchors = self.bbox2d_npy[p]
-                    else:
-                        anchors =  self.bbox2d_npy # 
-                print(f"[anchors.py] anchors = {anchors.shape}") # From smallest to largest anchor
-                print(f"[anchors.py] self.strides[idx] = {self.strides[idx]}")
                 
-                shifted_anchors = shift(image_shapes[idx], self.strides[idx], anchors)
+                ###########################
+                ### Get anchors(2dbbox) ###
+                ###########################
+                if self.external_anchor_path == "": # Generate Anchor by yourself
+                    anchors = generate_anchors(base_size=self.sizes[idx], ratios=self.ratios, scales=self.scales)
+                
+                else: # Use External Anchor
+                    if type(self.bbox2d_npy) == dict: # Pyrimid anchors 
+                        anchors = self.bbox2d_npy[p]
+                    
+                    else: # sinlge-level anchors
+                        anchors = self.bbox2d_npy
+                
+                print(f"[anchors.py] anchors = {anchors.shape}") # (32, 4) From smallest to largest anchor
+                print(f"[anchors.py] self.strides[idx] = {self.strides[idx]}")
+                if self.is_das:
+                    print(f"[anchors.py] self.strides[idx] = {self.strides[idx]}")
+                    if   p == 3: y_range = (6, 14) # (4, 14)
+                    elif p == 4: y_range = (7,  9) # (7, 12)
+                    elif p == 5: y_range = (4,  8) # (6, 9 )
+                    shifted_anchors = shift(image_shapes[idx], self.strides[idx], anchors, y_range)
+                else:
+                    shifted_anchors = shift(image_shapes[idx], self.strides[idx], anchors)
+                print(f"[anchors.py] shifted_anchors = {shifted_anchors.shape}") # (184320, 4), (46080, 4), (11520, 4)
+                
                 all_anchors     = np.append(all_anchors, shifted_anchors, axis=0)
             print(f"[anchors.py] all_anchors = {all_anchors.shape}") # (69210, 4) # (46080, 4)
             
-            if self.readConfigFile:
-                if self.external_pixelwise_anchor == "":
-                    sizes_int, ratio_int = self.anchors2indexes(all_anchors)
-                    # print(f"sizes_int = {sizes_int.shape}") # sizes_int = (46080,)
-                    # print(f"ratio_int = {ratio_int.shape}") # ratio_int = (46080,)
-
-                    self.anchor_means = image.new(self.anchors_mean_original[:, sizes_int, ratio_int]) #[types, N, 6]
-                    self.anchor_stds  = image.new(self.anchors_std_original[:, sizes_int, ratio_int]) #[types, N, 6]
-                    # print(f"self.anchor_means  = {self.anchor_means.shape}") # torch.Size([1, 46080, 6])
-                    # print(f"self.anchor_stds  = {self.anchor_stds.shape}") # torch.Size([1, 46080, 6])
+            if self.is_training_process: # Only for training processs
+                ############################################################
+                ### Get mean and std of anchors from preprocessing files ###
+                ############################################################
+                if self.anchor_prior: # Use pre-processed mean and std file
+                    # TODO, currently only support single object
+                    print(f"Using pre-processed mean and std")
+                    print(f"self.anchors_avg_original = {self.anchors_avg_original.shape}") # (1, 16, 2, 6)
+                    if len(self.anchors_avg_original.shape) == 4: # The format is # (1, 16, 2, 6)
+                        sizes_int, ratio_int = self.anchors2indexes(all_anchors) #　(46080,), (46080,)
+                        self.anchor_means = image.new(self.anchors_avg_original[:, sizes_int, ratio_int]) #[types, N, 6], [1, 46080, 6]
+                        self.anchor_stds  = image.new(self.anchors_std_original[:, sizes_int, ratio_int]) #[types, N, 6], [1, 46080, 6]
+                    else: # The format is # (1, 32, 6)
+                        self.anchor_means = image.new( np.expand_dims(np.tile(self.anchors_avg_original[0], (int(all_anchors.shape[0] / self.anchors_avg_original.shape[1]), 1)), axis=0) )
+                        self.anchor_stds  = image.new( np.expand_dims(np.tile(self.anchors_std_original[0], (int(all_anchors.shape[0] / self.anchors_avg_original.shape[1]), 1)), axis=0) )
                     
-                    self.anchor_mean_std = torch.stack([self.anchor_means, self.anchor_stds], dim=-1).permute(1, 0, 2, 3) #[N, types, 6, 2]
-                    # [z, sin2a, cos2a, w, h, l]
-                else:
-                    if self.is_pyrimid_external_anchor:
+                else: # Use External anchors file and use external mean and std files too
+                    print(f"Using external anchor file ") 
+                    if type(self.mean_npy) == dict: # Pyrimid anchor
                         anchor_means_list = []
                         anchor_stds_list  = []
-                        for i_level, level in enumerate(self.pyramid_levels): # image_shapes
+                        for i_level, level in enumerate(self.pyramid_levels):
                             num_pixels = image_shapes[i_level][0] * image_shapes[i_level][1]
                             anchor_means_list.append( image.new( np.expand_dims(np.tile(self.mean_npy[level], (num_pixels, 1)), axis=0) ) )
-                            anchor_stds_list.append(  image.new( np.expand_dims(np.tile(self.std_npy[level],  (num_pixels, 1)), axis=0) ) )
-                            print(f"[anchor.py] anchor_means_list[-1].shape = {anchor_means_list[-1].shape}")
-                            
-                            # print(f"self.anchor_means.shape = {self.anchor_means.shape}")
+                            anchor_stds_list. append( image.new( np.expand_dims(np.tile(self.std_npy[level],  (num_pixels, 1)), axis=0) ) )
+                            # print(f"[anchor.py] anchor_means_list[-1].shape = {anchor_means_list[-1].shape}")
                         self.anchor_means = torch.cat(anchor_means_list, dim=1)
-                        self.anchor_stds = torch.cat(anchor_stds_list,  dim=1)
-                        print(f"[anchor.py] self.anchor_means  = {self.anchor_means.shape}")
-                        print(f"[anchor.py] self.anchor_stds  = {self.anchor_stds.shape}")
-                        self.anchor_mean_std = torch.stack([self.anchor_means, self.anchor_stds], dim=-1).permute(1, 0, 2, 3) #[N, types, 6, 2]
-
-                    else:
+                        self.anchor_stds  = torch.cat(anchor_stds_list,  dim=1)
+                        
+                    else: # 
                         self.anchor_means = image.new( np.expand_dims(np.tile(self.mean_npy, (int(all_anchors.shape[0] / self.mean_npy.shape[0]), 1)), axis=0) )
                         self.anchor_stds  = image.new( np.expand_dims(np.tile(self.std_npy,  (int(all_anchors.shape[0] / self.mean_npy.shape[0]), 1)), axis=0) )
-                        print(f"[anchor.py] self.anchor_means  = {self.anchor_means.shape}")
-                        print(f"[anchor.py] self.anchor_stds  = {self.anchor_stds.shape}")
-                        self.anchor_mean_std = torch.stack([self.anchor_means, self.anchor_stds], dim=-1).permute(1, 0, 2, 3) #[N, types, 6, 2]
                 
+                print(f"[anchor.py] self.anchor_means = {self.anchor_means.shape}")
+                print(f"[anchor.py] self.anchor_stds  = {self.anchor_stds.shape}")
+                self.anchor_mean_std = torch.stack([self.anchor_means, self.anchor_stds], dim=-1).permute(1, 0, 2, 3) #[N, types, 6, 2]
+            
             all_anchors = np.expand_dims(all_anchors, axis=0)
             if isinstance(image, torch.Tensor):
                 self.anchors = image.new(all_anchors.astype(np.float32)) #[1, N, 4]
@@ -199,7 +232,7 @@ class Anchors(nn.Module):
             
             # if P2 is the same than don't do anything
             if self.P2 is not None and torch.all(self.P2 == P2) and self.P2.shape == P2.shape:
-                if self.readConfigFile:
+                if self.is_training_process:
                     return self.anchors, self.useful_mask, self.anchor_mean_std
                 else:
                     return self.anchors, self.useful_mask
@@ -209,7 +242,7 @@ class Anchors(nn.Module):
             cy = P2[:, 1:2, 2:3] #[B,1, 1]
             cx = P2[:, 0:1, 2:3] #[B,1, 1]
             N = self.anchors.shape[1]
-            if self.readConfigFile and is_filtering:
+            if self.is_training_process and is_filtering:
                 # anchor_means is from dataset statistic; therefore, z is dependent on data distribution
                 anchors_z = self.anchor_means[:, :, 0] #[types, N] # torch.Size([1, 46080])
                 # a = torch.flatten(anchors_z)
@@ -230,9 +263,10 @@ class Anchors(nn.Module):
             # print(f"self.useful_mask = {self.useful_mask.shape}") # torch.Size([8, 61520])
             # print(f"[anchor.py] self.useful_mask = {torch.count_nonzero(self.useful_mask[0])}") # 9684
             
-            if self.readConfigFile:
+            
+            if self.is_training_process:
                 return self.anchors, self.useful_mask, self.anchor_mean_std
-            else:
+            else:# Preprocessing
                 return self.anchors, self.useful_mask
         return self.anchors
 
@@ -335,9 +369,13 @@ def anchors_for_shape(
 
     return all_anchors
 
-def shift(shape, stride, anchors):
+def shift(shape, stride, anchors, y_range = None):
     shift_x = (np.arange(0, shape[1]) + 0.5) * stride
-    shift_y = (np.arange(0, shape[0]) + 0.5) * stride
+    
+    if y_range == None:
+        shift_y = (np.arange(0, shape[0]) + 0.5) * stride
+    else:
+        shift_y = (np.arange(y_range[0], y_range[1]) + 0.5) * stride
     # print(f"shift_x = {shift_x}")
     # [   8.   24.   40.   56.   72.   88.  104.  120.  136.  152.  168.  184.
     # 200.  216.  232.  248.  264.  280.  296.  312.  328.  344.  360.  376.
@@ -346,7 +384,7 @@ def shift(shape, stride, anchors):
     # 776.  792.  808.  824.  840.  856.  872.  888.  904.  920.  936.  952.
     # 968.  984. 1000. 1016. 1032. 1048. 1064. 1080. 1096. 1112. 1128. 1144.
     # 1160. 1176. 1192. 1208. 1224. 1240. 1256. 1272.]
-    # print(f"shift_y = {shift_y}") # [8 24 40 56 72 88 104 120 136. 152. 168. 184. 200 216 232. 248. 264. 280.]
+    print(f"[anchor.py] shift_y = {shift_y}") # [8 24 40 56 72 88 104 120 136. 152. 168. 184. 200 216 232. 248. 264. 280.]
 
     shift_x, shift_y = np.meshgrid(shift_x, shift_y)
 

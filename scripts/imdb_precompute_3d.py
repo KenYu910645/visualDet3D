@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use('agg') 
 
 from _path_init import *
-from visualDet3D.networks.heads.anchors import Anchors
+from visualDet3D.networks.heads.anchors import Anchors, load_from_pkl_or_npy, generate_anchors
 from visualDet3D.networks.utils.utils import calc_iou, BBox3dProjector
 from visualDet3D.data.pipeline import build_augmentator
 from visualDet3D.data.kitti.kittidata import KittiData, KittiLabel
@@ -68,38 +68,61 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
     print("start reading {} data".format(data_split))
     timer = Timer()
 
-    anchor_prior = getattr(cfg, 'anchor_prior', True)
-    external_pixelwise_anchor = getattr(cfg.detector.anchors, 'external_pixelwise_anchor', "")
-
+    anchor_prior         = getattr(cfg.detector.anchors, 'anchor_prior', True)
+    external_anchor_path = getattr(cfg.detector.anchors, 'external_anchor_path', "")
+    is_das               = getattr(cfg.detector.anchors, 'is_das', False)
+    
     total_objects        = [0 for _ in range(len(cfg.obj_types))]
     total_usable_objects = [0 for _ in range(len(cfg.obj_types))]
+    
+    # cfg.detector.head.anchors_cfg.external_anchor_path = getattr(cfg.detector.head.anchors_cfg, 'external_anchor_path', "")
+    print(f"[imdb_precompute_3d.py] external_anchor_path = {external_anchor_path}")
+
+    if external_anchor_path != "":
+        anchor_fns = [os.path.join(external_anchor_path, fns) for fns in os.listdir(external_anchor_path)]
+        bbox2d = load_from_pkl_or_npy( next(f for f in anchor_fns if "2dbbox" in f) )
+        num_external_anchor = bbox2d.shape[0]
+        # print(f"bbox2d = {bbox2d.shape}") # (32, 4)
+    else:
+        bbox2d = generate_anchors(base_size=cfg.detector.anchors.sizes[0], 
+                                  ratios=cfg.detector.anchors.ratios, 
+                                  scales=cfg.detector.anchors.scales)
+    
+    # Initalize mean_std things
     if anchor_prior:
         anchor_manager = Anchors(cfg.path.preprocessed_path, readConfigFile=False, **cfg.detector.head.anchors_cfg)
         preprocess = build_augmentator(cfg.data.test_augmentation)
         total_objects        = [0 for _ in range(len(cfg.obj_types))]
         total_usable_objects = [0 for _ in range(len(cfg.obj_types))]
         
-        len_scale = len(anchor_manager.scales)
+        len_scale  = len(anchor_manager.scales)
         len_ratios = len(anchor_manager.ratios)
-        len_level = len(anchor_manager.pyramid_levels)
-
-        examine = np.zeros([len(cfg.obj_types), len_level * len_scale, len_ratios]) # [1, 16, 2]
-        sums    = np.zeros([len(cfg.obj_types), len_level * len_scale, len_ratios, 3]) 
-        squared = np.zeros([len(cfg.obj_types), len_level * len_scale, len_ratios, 3], dtype=np.float64)
-
-        uniform_sum_each_type    = np.zeros((len(cfg.obj_types), 6), dtype=np.float64) # [z, sin2a, cos2a, w, h, l] : sum of all labels
-        uniform_square_each_type = np.zeros((len(cfg.obj_types), 6), dtype=np.float64) # sqaure of all label
+        len_level  = len(anchor_manager.pyramid_levels) if not is_das else 1
+        
+        if external_anchor_path == "": 
+            num_covered_gt = np.zeros([len(cfg.obj_types), len_level * len_scale, len_ratios]) # [1, 16, 2]
+            sum_covered_gt = np.zeros([len(cfg.obj_types), len_level * len_scale, len_ratios, 3])  # [z, sin, cos]
+            squ_covered_gt = np.zeros([len(cfg.obj_types), len_level * len_scale, len_ratios, 3], dtype=np.float64)
+            
+            print(f"num_covered_gt = {num_covered_gt.shape}]") # (1, 48, 2)
+        else:
+            num_covered_gt = np.zeros([len(cfg.obj_types), num_external_anchor]) # [1, 32]
+            sum_covered_gt = np.zeros([len(cfg.obj_types), num_external_anchor, 3]) # [1, 32, 3],  [z, sin, cos]
+            squ_covered_gt = np.zeros([len(cfg.obj_types), num_external_anchor, 3], dtype=np.float64)
+            
+        sum_zscwhl = np.zeros((len(cfg.obj_types), 6), dtype=np.float64) # [z, sin2a, cos2a, w, h, l] : sum of all labels
+        squ_zscwhl = np.zeros((len(cfg.obj_types), 6), dtype=np.float64) # sqaure of all label
 
     is_copy_paste = False
     for d in cfg.data.train_augmentation:
         if d['type_name'] == 'CopyPaste':
             is_copy_paste = True
-            copy_paste_use_seg      = d['keywords']['use_seg']
-            copy_paste_solid_ratio  = d['keywords']['solid_ratio']
-            copy_paste_scene_awaree = d['keywords']['use_scene_aware']
+            copy_paste_use_seg = d['keywords']['use_seg']
     
     print(f"[imdb_precompute_3d.py] is_copy_paste = {is_copy_paste}")
     instance_pool = []
+    cover_bbox2d_gts = []
+    misss_bbox2d_gts = []
     for i, index_name in enumerate(index_names):
         
         ######################################
@@ -114,7 +137,7 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
                                       idx_img = index_name,
                                       idx_line = idx_line, 
                                       tf_matrix = P2) for idx_line, str_line in enumerate(lines)]
-            # Filter inappropiate objs
+            # Filter inappropiate objs in instance_pool
             for obj in objs:
                 if obj.category in cfg.obj_types and obj.truncated < 0.5 and obj.occluded == 0.0 and obj.area > 3000:
                     if copy_paste_use_seg and len(obj.seg_points) == 0 : continue
@@ -125,22 +148,18 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
         calib, image, label, velo, depth = data_frame.read_data()
         
         # Load label , store the list of kittiObjet and kittiCalib, 
-
         if data_split == 'training':
             data_frame.label = [obj for obj in label.data if obj.type in cfg.obj_types and obj.occluded < cfg.data.max_occlusion and obj.z > cfg.data.min_z]
             
             if anchor_prior:
                 for j in range(len(cfg.obj_types)):
-                    total_objects[j] += len([obj for obj in data_frame.label if obj.type==cfg.obj_types[j]])
-                    data = np.array(
-                        [
+                    total_objects[j] += len([obj for obj in data_frame.label if obj.type == cfg.obj_types[j]])
+                    data = np.array([
                             [obj.z, np.sin(2*obj.alpha), np.cos(2*obj.alpha), obj.w, obj.h, obj.l]
-                                for obj in data_frame.label if obj.type==cfg.obj_types[j]
-                        ]
-                    ) #[N, 6]
+                                for obj in data_frame.label if obj.type==cfg.obj_types[j] ]) #[N, 6]
                     if data.any():
-                        uniform_sum_each_type[j, :]    += np.sum(data, axis=0)
-                        uniform_square_each_type[j, :] += np.sum(data ** 2, axis=0)
+                        sum_zscwhl[j, :] += np.sum(data     , axis=0)
+                        squ_zscwhl[j, :] += np.sum(data ** 2, axis=0)
         else:
             data_frame.label = [obj for obj in label.data if obj.type in cfg.obj_types]
         
@@ -152,7 +171,7 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
             
             # Augument the images
             image, P2, label = preprocess(original_image, p2=deepcopy(calib.P2), labels=deepcopy(data_frame.label))
-            _,  P3 = preprocess(original_image, p2=deepcopy(calib.P3))
+            _,  P3           = preprocess(original_image, p2=deepcopy(calib.P3))
 
             ## Computing statistic for positive anchors
             if len(data_frame.label) > 0:
@@ -161,34 +180,51 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
                 
                 for j in range(len(cfg.obj_types)):
                     
-                    # Label
-                    bbox2d = torch.tensor([[obj.bbox_l, obj.bbox_t, obj.bbox_r, obj.bbox_b] for obj in label if obj.type == cfg.obj_types[j]]).cuda()
-                    if len(bbox2d) < 1:
-                        continue
-                    bbox3d = torch.tensor([[obj.x, obj.y, obj.z, np.sin(2 * obj.alpha), np.cos(2 * obj.alpha)] for obj in label if obj.type == cfg.obj_types[j]]).cuda()
-
+                    # Label_2d, [num_gt, 4]
+                    bbox2d_gt = torch.tensor([[obj.bbox_l, obj.bbox_t, obj.bbox_r, obj.bbox_b] for obj in label if obj.type == cfg.obj_types[j]]).cuda()
                     
-                    usable_anchors = anchors[0]
+                    # Ignore frame with no groundtrues
+                    if len(bbox2d_gt) < 1: continue
+                    
+                    # Label_3d, (x,y,z,sin,cos)
+                    bbox3d_gt = torch.tensor([[obj.x, obj.y, obj.z, np.sin(2 * obj.alpha), np.cos(2 * obj.alpha)] for obj in label if obj.type == cfg.obj_types[j]]).cuda()
+                    
+                    usable_anchors = anchors[0] #　[46080, 4]
 
-                    IoUs = calc_iou(usable_anchors, bbox2d) #[N, K]
-                    IoU_max, IoU_argmax = torch.max(IoUs, dim=0)
-                    IoU_max_anchor, IoU_argmax_anchor = torch.max(IoUs, dim=1)
+                    # Get IoU between label and anchors
+                    IoUs = calc_iou(usable_anchors, bbox2d_gt) #[N, K], [46080, num_gt]
+                    IoU_max       , IoU_argmax        = torch.max(IoUs, dim=0) # IoU_max # [num_gt]
+                    IoU_max_anchor, IoU_argmax_anchor = torch.max(IoUs, dim=1) # IoU_max_anchor [46080]
+                    # print(f"IoU_max = {IoU_max.shape}") 
+                    # print(f"IoU_max_anchor = {IoU_max_anchor.shape}")
 
-                    num_usable_object = torch.sum(IoU_max > cfg.detector.head.loss_cfg.fg_iou_threshold).item()
-                    total_usable_objects[j] += num_usable_object
+                    # Get covered and missed groundtrue for visualization
+                    covered_gt_mask = IoU_max > cfg.detector.head.loss_cfg.fg_iou_threshold
+                    if bbox2d_gt[ covered_gt_mask].shape[0] != 0: cover_bbox2d_gts.append(bbox2d_gt[ covered_gt_mask])
+                    if bbox2d_gt[~covered_gt_mask].shape[0] != 0: misss_bbox2d_gts.append(bbox2d_gt[~covered_gt_mask])
+                    
+                    total_usable_objects[j] += torch.sum(covered_gt_mask).item()
 
                     positive_anchors_mask = IoU_max_anchor > cfg.detector.head.loss_cfg.fg_iou_threshold
-                    positive_ground_truth_3d = bbox3d[IoU_argmax_anchor[positive_anchors_mask]].cpu().numpy()
+                    positive_gts_xyzsc = bbox3d_gt[IoU_argmax_anchor[positive_anchors_mask]].cpu().numpy()
+                    # print(f"positive_gts_xyzsc = {positive_gts_xyzsc.shape}") # (num_positive, 5)
 
-                    used_anchors = usable_anchors[positive_anchors_mask].cpu().numpy() #[x1, y1, x2, y2]
-
-                    if external_pixelwise_anchor == "":
+                    if external_anchor_path == "":
+                        used_anchors = usable_anchors[positive_anchors_mask].cpu().numpy() #[x1, y1, x2, y2]
+                        # print(f"used_anchors = {used_anchors.shape}")
                         sizes_int, ratio_int = anchor_manager.anchors2indexes(used_anchors)
                         for k in range(len(sizes_int)):
-                            examine[j, sizes_int[k], ratio_int[k]] += 1 # Denominator
-                            sums[j, sizes_int[k], ratio_int[k]] += positive_ground_truth_3d[k, 2:5]
-                            squared[j, sizes_int[k], ratio_int[k]] += positive_ground_truth_3d[k, 2:5] ** 2
-
+                            num_covered_gt[j, sizes_int[k], ratio_int[k]] += 1 # Denominator, number of groundtrue cover by this anchor
+                            sum_covered_gt[j, sizes_int[k], ratio_int[k]] += positive_gts_xyzsc[k, 2:5]       # [z, sin, cos]
+                            squ_covered_gt[j, sizes_int[k], ratio_int[k]] += positive_gts_xyzsc[k, 2:5] ** 2  # [z, sin, cos]
+                    else:
+                        # get the indices of the True values in positive_anchors_mask
+                        anchor_idx = np.where(positive_anchors_mask.cpu().numpy())[0]
+                        ank_i = anchor_idx % num_external_anchor
+                        num_covered_gt[j, ank_i] += 1 # Denominator, number of groundtrue cover by this anchor
+                        sum_covered_gt[j, ank_i] += positive_gts_xyzsc[:, 2:5]       # [z, sin, cos]
+                        squ_covered_gt[j, ank_i] += positive_gts_xyzsc[:, 2:5] ** 2  # [z, sin, cos]
+                    
         # Save label.txt and calib.txt in frames[ KittiData(), KittiData(), KittiData(), ...]
         frames[i] = data_frame
 
@@ -200,42 +236,72 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
     
     if data_split == 'training':
         print("\n")
-        print(f"Best Possible Rate = {100*total_usable_objects[0]/total_objects[0]}%")
+        print(f"Best Possible Recall = {100*total_usable_objects[0]/total_objects[0]}%")
     
     save_dir = os.path.join(cfg.path.preprocessed_path, data_split)
     if not os.path.isdir(save_dir):
         os.makedirs(save_dir)
-    if data_split == 'training' and anchor_prior and external_pixelwise_anchor == "":
-        
+    
+    ####################################
+    ### Anchor mean, std Calculation ###
+    ####################################
+    if data_split == 'training' and anchor_prior:
         for j in range(len(cfg.obj_types)):
-            global_mean = uniform_sum_each_type[j] / total_objects[j]
-            global_var  = np.sqrt(uniform_square_each_type[j] / total_objects[j] - global_mean ** 2)
-
-            avg = sums[j] / (examine[j][:, :, np.newaxis] + 1e-8)
-            EX_2 = squared[j] / (examine[j][:, :, np.newaxis] + 1e-8)
-            std = np.sqrt(EX_2 - avg ** 2)
-
-            # If data on this location is less than 10, ignore it's statistic
-            avg[examine[j] < 10, :] = -100  # with such negative mean Z, anchors/losses will filter them out
-            std[examine[j] < 10, :] = 1e10
+            
+            if external_anchor_path == "":
+                avg = sum_covered_gt[j] / (num_covered_gt[j][:, :, np.newaxis] + 1e-8)
+                ex2 = squ_covered_gt[j] / (num_covered_gt[j][:, :, np.newaxis] + 1e-8)
+                std = np.sqrt(ex2 - avg ** 2)
+            else:
+                avg = sum_covered_gt[j] / (num_covered_gt[j][:, np.newaxis] + 1e-8) # (32, 3)
+                ex2 = squ_covered_gt[j] / (num_covered_gt[j][:, np.newaxis] + 1e-8) 
+                std = np.sqrt(ex2 - avg ** 2) # (32, 3)
+            
+            # If the covered groundtrue is less than 10, ignore the avg and std
+            avg[num_covered_gt[j] < 10, :] = -100  # with such negative mean Z, anchors/losses will filter them out
+            std[num_covered_gt[j] < 10, :] = 1e10
             
             avg[np.isnan(std)]      = -100
             std[np.isnan(std)]      = 1e10
             avg[std < 1e-3]         = -100
             std[std < 1e-3]         = 1e10
-
-            whl_avg = np.ones([avg.shape[0], avg.shape[1], 3]) * global_mean[3:6]
-            whl_std = np.ones([avg.shape[0], avg.shape[1], 3]) * global_var[3:6]
-
-            avg = np.concatenate([avg, whl_avg], axis=2)
-            std = np.concatenate([std, whl_std], axis=2)
-
+            
+            # Get width, height, length statistics
+            # It is the average of the whole groundtrue
+            global_mean = sum_zscwhl[j] / total_objects[j] # (6,)
+            global_var  = np.sqrt(squ_zscwhl[j] / total_objects[j] - global_mean**2) # (6,)
+            
+            if external_anchor_path == "":
+                whl_avg = np.ones([avg.shape[0], avg.shape[1], 3]) * global_mean[3:6]
+                whl_std = np.ones([avg.shape[0], avg.shape[1], 3]) * global_var [3:6]
+                avg = np.concatenate([avg, whl_avg], axis=2)
+                std = np.concatenate([std, whl_std], axis=2)
+            else:
+                whl_avg = np.ones([num_external_anchor, 3]) * global_mean[3:6]
+                whl_std = np.ones([num_external_anchor, 3]) * global_var [3:6]
+                avg = np.concatenate([avg, whl_avg], axis=1) # (32, 6)
+                std = np.concatenate([std, whl_std], axis=1) # (32, 6)
+            
             cfg.data.anchor_mean_std_path     = getattr(cfg.data, 'anchor_mean_std_path', "/home/lab530/KenYu/visualDet3D/anchor/max_occlusion_2")
             cfg.data.is_overwrite_anchor_file = getattr(cfg.data, 'is_overwrite_anchor_file', False)
-            cfg.data.is_use_anchor_file       = getattr(cfg.data, 'is_use_anchor_file', True)
+            cfg.data.is_use_anchor_file       = getattr(cfg.data, 'is_use_anchor_file', False) # BUG, this was set to true previously
             
             mean_file_dst = os.path.join(save_dir,'anchor_mean_{}.npy'.format(cfg.obj_types[j]))
             std_file_dst  = os.path.join(save_dir,'anchor_std_{}.npy'.format(cfg.obj_types[j]))
+            
+            # Output convered and missed groundtrue for visualization
+            anchor_prior_calculation_result = {}
+            anchor_prior_calculation_result['cover_bbox2d_gts'] = torch.cat(cover_bbox2d_gts, dim=0).cpu().numpy()
+            anchor_prior_calculation_result['misss_bbox2d_gts'] = torch.cat(misss_bbox2d_gts, dim=0).cpu().numpy()
+            anchor_prior_calculation_result['anchor_all_bbox2d'] = anchors[0].cpu().numpy()
+            anchor_prior_calculation_result['anchor_bbox2d']    = bbox2d
+            anchor_prior_calculation_result['anchor_mean']      = avg # (32, 6)
+            anchor_prior_calculation_result['anchor_std']       = std # (32, 6)
+            
+            with open('/home/lab530/KenYu/visualDet3D/covered_missed_gt/anchor_prior_calculation_result.pkl', 'wb') as f:
+                pickle.dump(anchor_prior_calculation_result, f)
+                print(f"[imdb_precompute_3d.py] Saved anchor_prior_calculation_result")
+            
             if not cfg.data.is_use_anchor_file:
                 # Use anchor that generate with this dataset
                 np.save(mean_file_dst, avg)
@@ -253,7 +319,9 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
                 print(f"Using mean_file from {mean_file_src}")
                 print(f"Using std_file from {std_file_src}")
 
-    # For saving copy_paste instance pool
+    ######################################
+    ### Save Scene-Aware Instance Pool ###
+    ######################################
     if data_split == 'training' and is_copy_paste:
         
         # Save image source
@@ -267,13 +335,20 @@ def read_one_split(cfg, index_names, data_root_dir, output_dict, data_split = 't
         pickle.dump(instance_pool, open(os.path.join(save_dir, "instance_pool.pkl"), "wb"))
         print(f"Saved instance pool to {os.path.join(save_dir, 'instance_pool.pkl')}")
         
-        
     pkl_file = os.path.join(save_dir,'imdb.pkl')
     pickle.dump(frames, open(pkl_file, 'wb'))
     print("{} split finished precomputing".format(data_split))
 
 def main(config:str="config/config.py"):
+    
+    # This is only for kmeans experiement
+    # for num_anchor in range(1, 20):
+    #     print(f"START {num_anchor} ANCHORS")
+    #     cfg = cfg_from_file(config)
+    #     cfg.detector.anchors.external_anchor_path = f"/home/lab530/KenYu/visualDet3D/anchor/kmeans/anchor_{num_anchor}/"
+    
     cfg = cfg_from_file(config)
+    
     torch.cuda.set_device(cfg.trainer.gpu)
     
     # original 

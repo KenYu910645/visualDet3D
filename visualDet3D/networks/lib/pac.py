@@ -127,13 +127,23 @@ class PerspectiveConv2d(nn.Module):
                 v, u = v_f_idx*self.D_RATIO, u_f_idx*self.D_RATIO
                 # 
                 slope = get_slope((u, v, AVG_Y3D_CENTER), P2)
-                dcx = self.offset_2d
-                dcy = self.offset_2d
-                dsx = dcy - sqrt(1 + slope**2)
-                for i, i_o in enumerate( [-dsx*slope, -dcx-dsx,   -dsx*slope, -dsx,   -dsx*slope, dcx-dsx,
-                                           0        , -dcx    ,    0        , 0   ,    0,         dcx    ,
-                                           dsx*slope, -dcx+dsx,    dsx*slope,  dsx,    dsx*slope, dcx+dsx ] ):
+                
+                # Use Fix 2d offset, TODO, need to check this is good
+                dcx, dcy = (self.offset_2d, self.offset_2d)
+                theta = atan2(slope, 1)
+                dx, dy = (dcy*cos(theta), dcy*sin(theta))
+                for i, i_o in enumerate([-dy, -dcx-dx,   -dy, -dx,   -dy, dcx-dx,
+                                           0, -dcx   ,     0,   0,     0, dcx   ,
+                                          dy, -dcx+dx,    dy,  dx,    dy, dcx+dx]):
                     offset[:, i, v_f_idx, u_f_idx] = i_o/self.D_RATIO
+                
+                # dcx = self.offset_2d
+                # dcy = self.offset_2d
+                # dsx = dcy - sqrt(1 + slope**2)
+                # for i, i_o in enumerate( [-dsx*slope, -dcx-dsx,   -dsx*slope, -dsx,   -dsx*slope, dcx-dsx,
+                #                            0        , -dcx    ,    0        , 0   ,    0,         dcx    ,
+                #                            dsx*slope, -dcx+dsx,    dsx*slope,  dsx,    dsx*slope, dcx+dsx ] ):
+                #     offset[:, i, v_f_idx, u_f_idx] = i_o/self.D_RATIO
                 
                 # offset from regular convolution
                 offset[:, :, v_f_idx, u_f_idx] -= np.array([-1,-1,  -1,0,  -1,1,

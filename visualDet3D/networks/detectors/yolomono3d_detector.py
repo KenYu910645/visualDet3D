@@ -19,7 +19,11 @@ class Yolo3D(nn.Module):
         self.obj_types = network_cfg.obj_types
         
         self.exp = network_cfg.exp
+        
+        self.is_das = getattr(network_cfg, 'is_das', False)
+        
         print(f"Yolo3D experiment setting = {self.exp}")
+        print(f"self.is_das = {self.is_das}")
         # network_cfg.head.is_two_stage = getattr(network_cfg.head, 'is_two_stage', False)
         
         self.build_head(network_cfg)
@@ -33,6 +37,10 @@ class Yolo3D(nn.Module):
         
         self.is_writen_anchor_file = False
         
+        if self.is_das:
+            self.lxl_conv_1024 = nn.Conv2d(in_channels =  512, out_channels = 1024, kernel_size = 1)
+            self.fpn_conv      = nn.Conv2d(in_channels = 1024, out_channels = 1024, kernel_size = 3, padding=1)
+    
     def build_core(self, network_cfg):
         self.core = YoloMono3DCore(network_cfg.backbone)
 
@@ -54,6 +62,19 @@ class Yolo3D(nn.Module):
         # print(f"P2 = {P2}") [8, 3, 4] 
         # print(f"img_batch.shape = {img_batch.shape}") # [8, 3, 288, 1280]
         features  = self.core(dict(image=img_batch, P2=P2)) # [8, 1024, 18, 80]
+        
+        # if self.is_das: # Neck
+        #     # print(features[0].shape) # [8, 512, 36, 160]
+        #     # print(features[1].shape) # [8, 1024, 18, 80]
+            
+        #     # Change number of channel
+        #     features_8 = self.lxl_conv_1024(features[0])
+            
+        #     # Upsmaple 1/16 feature
+        #     feature_16 = torch.nn.functional.interpolate(features[1], scale_factor=2, mode='nearest')
+            
+        #     features = self.fpn_conv(features_8 + feature_16)
+        #     # print(f"is_das features = {features.shape}") # [8, 1024, 36, 160]
         
         # For Experiment C
         if self.exp == "C":

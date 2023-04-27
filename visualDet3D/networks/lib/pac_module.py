@@ -1,4 +1,4 @@
-from pac import PerspectiveConv2d
+from visualDet3D.networks.lib.pac import PerspectiveConv2d
 import torch
 import torch.nn as nn
 
@@ -30,7 +30,7 @@ class PAC_module(nn.Module):
         pac_d64_feature = self.pac_d64(inputs)
         
         cat_features = torch.cat([pac_d16_feature, pac_d32_feature, pac_d64_feature, inputs['features']], 1)
-        print(f"cat_features = {cat_features.shape}")
+        # print(f"cat_features = {cat_features.shape}")
         
         return self.lxl_conv_out(cat_features)
         

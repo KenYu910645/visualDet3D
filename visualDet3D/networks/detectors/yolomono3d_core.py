@@ -50,8 +50,8 @@ class YoloMono3DCore(nn.Module):
             x = self.backbone(x['image']) # [8, 2048, 9, 40]
             if "resnext_mode_name" in self.backbone_arguments:
                 x = torch.unsqueeze(x, dim=0)
-        
-        x = x[0]
+
+        if len(x) == 1: x = x[0]
         # print(f"x.shape = {x.shape}") # torch.Size([8, 1024, 18, 80]
         return x
     
