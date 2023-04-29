@@ -70,6 +70,7 @@ class PerspectiveConv2d(nn.Module):
                  stride=1,
                  padding=1,
                  bias=False,
+                 offset_3d=0.4,
                  offset_2d=(32, 32),
                  input_shape=(18,80),
                  pad_mode="constant",

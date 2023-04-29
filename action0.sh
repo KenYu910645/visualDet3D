@@ -1,4 +1,4 @@
-EXP_NAME=('baseline' 'cubic_pac' 'pac_layer2' 'pac_module')
+EXP_NAME=('pac_dx128_dy128' 'pac_dx64_dy64' 'pac_dx16_dy16')
 
 for exp_name in "${EXP_NAME[@]}"
 do
