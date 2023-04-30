@@ -74,7 +74,8 @@ class PerspectiveConv2d(nn.Module):
                  offset_2d=(32, 32),
                  input_shape=(18,80),
                  pad_mode="constant",
-                 adpative_P2=False,):
+                 adpative_P2=False,
+                 lock_theta_ortho=False,):
 
         super(PerspectiveConv2d, self).__init__()
         
@@ -90,10 +91,12 @@ class PerspectiveConv2d(nn.Module):
         self.pad_size = 6
         self.pad_mode = pad_mode
         self.adpative_P2 = adpative_P2
-
+        
+        self.lock_theta_ortho = lock_theta_ortho
         print(f"self.pad_mode = {self.pad_mode}")
         print(f"self.offset_2d = {self.offset_2d}")
         print(f"self.adpative_P2 = {self.adpative_P2}")
+        print(f"self.lock_theta_ortho = {self.lock_theta_ortho}")
         
         self.regular_conv = nn.Conv2d(in_channels=in_channels,
                                       out_channels=out_channels,
@@ -129,7 +132,9 @@ class PerspectiveConv2d(nn.Module):
                 
                 # Use Fix 2d offset
                 dcx, dcy = self.offset_2d
-                theta = atan2(slope, 1)
+                if self.lock_theta_ortho: theta = pi/2
+                else:                     theta = atan2(slope, 1)
+                
                 dx, dy = (dcy*cos(theta), dcy*sin(theta))
                 for i, i_o in enumerate([-dy, -dcx-dx,   -dy, -dx,   -dy, dcx-dx,
                                            0, -dcx   ,     0,   0,     0, dcx   ,

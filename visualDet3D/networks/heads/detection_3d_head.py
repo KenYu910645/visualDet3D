@@ -20,7 +20,7 @@ from visualDet3D.networks.lib.pac import PerspectiveConv2d, PerspectiveConv2d_cu
 from visualDet3D.networks.lib.dcn import DeformableConv2d
 from visualDet3D.networks.lib.rfb import BasicRFB
 from visualDet3D.networks.lib.aspp import ASPP
-from visualDet3D.networks.lib.pac_module import PAC_module
+from visualDet3D.networks.lib.pac_module import PAC_module, PAC_3D_module
 from visualDet3D.networks.lib.das import LocalConv2d, DepthAwareSample
 
 class AnchorBasedDetection3DHead(nn.Module):
@@ -60,7 +60,8 @@ class AnchorBasedDetection3DHead(nn.Module):
                        is_aspp:bool=False,
                        is_cubic_pac:bool=False,
                        is_pac_module:bool=False,
-                       is_das:bool=False,):
+                       is_das:bool=False,
+                       is_pac_module_3D:bool=False):
 
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
@@ -105,7 +106,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.is_cubic_pac    = is_cubic_pac
         self.is_pac_module = is_pac_module
         self.is_das = is_das
-        
+        self.is_pac_module_3D = is_pac_module_3D
 
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
         print(f"self.is_fpn_debug = {self.is_fpn_debug}")
@@ -134,6 +135,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         print(f"is_cubic_pac = {self.is_cubic_pac}")
         print(f"is_pac_module = {self.is_pac_module}")
         print(f"is_das = {self.is_das}")
+        print(f"is_pac_module_3D = {self.is_pac_module_3D}")
         
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -996,6 +998,10 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             self.pac_layers = PAC_module(num_features_in, num_features_in, "2d_offset")
             print(f"self.pac_layers = {self.pac_layers}")
         
+        if self.is_pac_module_3D:
+            self.pac_layers = PAC_3D_module(num_features_in, num_features_in, "2d_offset")
+            print(f"self.pac_layers = {self.pac_layers}")
+            
         if self.is_rfb:
             self.RFB_layer = BasicRFB(1024, 1024, scale = 1.0, visual=2)
         
@@ -1151,7 +1157,7 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
             for i in range(self.num_pac_layer):
                 inputs['features'] = self.pac_layers[i](inputs)
         
-        if self.is_pac_module:
+        if self.is_pac_module or self.is_pac_module_3D:
             inputs['features'] = self.pac_layers(inputs)
     
         if self.is_rfb:
