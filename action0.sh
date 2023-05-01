@@ -1,4 +1,4 @@
-EXP_NAME=('pac_dx32_dy64_ortho' 'pac_dx32_dy128_ortho' 'pac_dx64_dy32' 'pac_dx128_dy32')
+EXP_NAME=('pac_dx32_dy64_ortho' 'pac_dx32_dy128_ortho' )
 
 for exp_name in "${EXP_NAME[@]}"
 do

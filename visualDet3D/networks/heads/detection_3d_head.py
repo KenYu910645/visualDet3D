@@ -61,7 +61,8 @@ class AnchorBasedDetection3DHead(nn.Module):
                        is_cubic_pac:bool=False,
                        is_pac_module:bool=False,
                        is_das:bool=False,
-                       is_pac_module_3D:bool=False):
+                       is_pac_module_3D:bool=False,
+                       lock_theta_ortho:bool=False,):
 
         super(AnchorBasedDetection3DHead, self).__init__()
         self.anchors = Anchors(preprocessed_path=preprocessed_path, readConfigFile=read_precompute_anchor, **anchors_cfg)
@@ -107,6 +108,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         self.is_pac_module = is_pac_module
         self.is_das = is_das
         self.is_pac_module_3D = is_pac_module_3D
+        self.lock_theta_ortho = lock_theta_ortho
 
         print(f"AnchorBasedDetection3DHead self.exp = {exp}")
         print(f"self.is_fpn_debug = {self.is_fpn_debug}")
@@ -136,6 +138,7 @@ class AnchorBasedDetection3DHead(nn.Module):
         print(f"is_pac_module = {self.is_pac_module}")
         print(f"is_das = {self.is_das}")
         print(f"is_pac_module_3D = {self.is_pac_module_3D}")
+        print(f"lock_theta_ortho = {self.lock_theta_ortho}")
         
         # print(f"self.anchors.num_anchors = {self.anchors.num_anchors}") # 32
         if getattr(layer_cfg, 'num_anchors', None) is None:
@@ -976,7 +979,8 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                                             offset_3d = self.offset_3d,
                                             input_shape = (18, 80),
                                             pad_mode=self.pad_mode,
-                                            adpative_P2 = self.adpative_P2,),
+                                            adpative_P2 = self.adpative_P2,
+                                            lock_theta_ortho=self.lock_theta_ortho,),
                         nn.BatchNorm2d(num_features_in),
                         nn.ReLU(),) )
                 self.pac_layers = [n.to("cuda") for n in self.pac_layers] # TODO, tmp
@@ -989,7 +993,8 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                                     offset_3d = self.offset_3d,
                                     input_shape = (18, 80),
                                     pad_mode=self.pad_mode,
-                                    adpative_P2 = self.adpative_P2,)
+                                    adpative_P2 = self.adpative_P2,
+                                    lock_theta_ortho=self.lock_theta_ortho,)
                     for _ in range(self.num_pac_layer) ])
                 
             print(f"self.pac_layers = {self.pac_layers}")
@@ -1016,7 +1021,8 @@ class GroundAwareHead(AnchorBasedDetection3DHead):
                                                                           offset_3d = self.offset_3d,
                                                                           input_shape = (18, 80),
                                                                           pad_mode=self.pad_mode,
-                                                                          adpative_P2 = self.adpative_P2,),
+                                                                          adpative_P2 = self.adpative_P2,
+                                                                          lock_theta_ortho=self.lock_theta_ortho,),
                                                                           nn.BatchNorm2d(num_features_in),
                                                                           nn.ReLU(),)
         
