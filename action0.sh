@@ -1,5 +1,11 @@
-EXP_NAME=('pac_dx32_dy64_ortho' 'pac_dx32_dy128_ortho' )
+#EXP_NAME=('dialate_1_2_3')
+#for exp_name in "${EXP_NAME[@]}"
+#do
+#    ./launchers/det_precompute.sh config/pac/"$exp_name".py train
+#    ./launchers/train.sh config/pac/"$exp_name".py 1 "$exp_name"
+#done
 
+EXP_NAME=('pac_dx48_dy48' 'pac_dx80_dy80' 'pac_dx96_dy96' 'pac_dx112_dy112' 'pac_dx144_dy144' 'pac_dx160_dy160')
 for exp_name in "${EXP_NAME[@]}"
 do
     ./launchers/det_precompute.sh config/pac_theta_edition/"$exp_name".py train
