@@ -1,10 +1,18 @@
-EXP_NAME=('cbam_only_spatial')
+EXP_NAME=('baseline')
 
 for exp_name in "${EXP_NAME[@]}"
 do
-    ./launchers/det_precompute.sh config/attention/"$exp_name".py train
-    ./launchers/train.sh config/attention/"$exp_name".py 1 "$exp_name"
+    ./launchers/det_precompute.sh config/baseline.py train
+    ./launchers/train.sh config/baseline.py 1 "$exp_name"
 done
+
+# EXP_NAME=('cbam_only_spatial')
+
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/attention/"$exp_name".py train
+#     ./launchers/train.sh config/attention/"$exp_name".py 1 "$exp_name"
+# done
 
 # ./launchers/det_precompute.sh config/fpn_3d/fpn_2d_pretrain.py train
 # ./launchers/train.sh config/fpn_3d/fpn_2d_pretrain.py 0 fpn_2d_pretrain

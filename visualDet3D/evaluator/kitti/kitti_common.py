@@ -304,10 +304,13 @@ def get_label_anno(label_path):
     })
     with open(label_path, 'r') as f:
         lines = f.readlines()
+        lines = list(l for l in lines if l and l != "\n") # Delete empty lines
     # if len(lines) == 0 or len(lines[0]) < 15:
     #     content = []
     # else:
+    # print(f"lines = {lines}")
     content = [line.strip().split(' ') for line in lines]
+    # print(f"content = {[x for x in content]}")
     annos['name']      = np.array([      x[0]  for x in content])
     annos['truncated'] = np.array([float(x[1]) for x in content])
     annos['occluded']  = np.array([int  (x[2]) for x in content])

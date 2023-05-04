@@ -586,7 +586,9 @@ def eval_class(gt_annos,
     # print(gt_annos[0])
     
     assert len(gt_annos) == len(dt_annos)
-    assert compute_aos, "[eval.py] currently don't support compute_aos = False"
+    # print(f"[eval.py] compute_aos = {compute_aos}")
+    if is_ap_crit:
+        assert compute_aos, "[eval.py] currently don't support compute_aos = False"
     N_SAMPLE_PTS = 41
     
     split_parts = get_split_parts(len(gt_annos), num_parts) # [75, 75, 75, 75, ... 19], split frame into 75, 75, ... parts

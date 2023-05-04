@@ -12,7 +12,7 @@ trainer = edict(
     max_epochs = 30,
     disp_iter = 50,
     save_iter = 5,
-    test_iter = 10,
+    test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
     evaluate_func = "evaluate_kitti_obj",
@@ -25,7 +25,7 @@ path = edict()
 path.data_path = '/home/lab530/KenYu/visualDet3D/kitti/training'# "/data/kitti_obj/training" # used in visualDet3D/data/.../dataset
 path.test_path = '/home/lab530/KenYu/visualDet3D/kitti/testing' # "/data/kitti_obj/testing" # used in visualDet3D/data/.../dataset
 path.visualDet3D_path = '/home/lab530/KenYu/visualDet3D/visualDet3D' # "/path/to/visualDet3D/visualDet3D" # The path should point to the inner subfolder
-path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/data_augumentation/baseline' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
+path.project_path = '/home/lab530/KenYu/visualDet3D/exp_output/baseline' # "/path/to/visualDet3D/workdirs" # or other path for pickle files, checkpoints, tensorboard logging and output files.
 if not os.path.isdir(path.project_path):
     os.mkdir(path.project_path)
 path.project_path = os.path.join(path.project_path, 'Mono3D')
@@ -85,6 +85,7 @@ data = edict(
     train_split_file = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'train.txt'),
     val_split_file   = os.path.join(cfg.path.visualDet3D_path, 'data', 'kitti', 'chen_split', 'val.txt'),
     use_right_image = False,
+    is_overwrite_anchor_file = False,
 )
 
 data.augmentation = edict(
@@ -167,6 +168,7 @@ detector.head = edict(
     loss_cfg        = head_loss,
     test_cfg        = head_test,
     exp             = cfg.exp,
+    data_cfg        = data,
 )
 detector.anchors = anchors
 detector.loss = head_loss
