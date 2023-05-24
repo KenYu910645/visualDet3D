@@ -10,8 +10,8 @@ from kitti.evaluate import evaluate
 # This is for producing vliadiont split file 
 # ls /home/lab530/KenYu/dd3d/outputs/2cyqwjvr-20220811_163826/inference/final-tta/kitti_3d_val/bbox3d_predictions_standard_format/ -l | awk '{gsub(/\.[^.]*$/,"",$NF); print $NF}'
 
-# # GAC
-# PRED_PATH = "/home/lab530/KenYu/visualDet3D/baseline_exp/Mono3D/output/validation/data/"
+# # GAC original
+PRED_PATH = "/home/lab530/KenYu/visualDet3D/exp_output/baseline_gac_original/Mono3D/output/validation/data/"
 # # SMOKE
 # PRED_PATH = "/home/lab530/KenYu/SMOKE/tools/logs/inference/kitti_train/data" 
 # "/home/lab530/KenYu/SMOKE/tools/logs/inference/kitti_train/data/"

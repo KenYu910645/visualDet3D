@@ -11,7 +11,7 @@ trainer = edict(
     gpu = 0,
     max_epochs = 30,
     disp_iter = 1,
-    save_iter = 1,
+    save_iter = 10,
     test_iter = 1,
     training_func = "train_mono_detection",
     test_func = "test_mono_detection",
@@ -99,6 +99,11 @@ data.augmentation = edict(
     crop_top = 100,
 )
 data.train_augmentation = [
+    edict(type_name='CopyPaste', keywords=edict(use_seg=False, 
+                                                solid_ratio=0.5, 
+                                                use_scene_aware=True,
+                                                num_add_obj=2,
+                                                use_z_jitter=True),),
     edict(type_name='ConvertToFloat'),
     edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
     edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
@@ -176,7 +181,6 @@ detector.head = edict(
     test_cfg        = head_test,
     exp             = cfg.exp,
     data_cfg        = data,
-    is_pac_module   = True,
 )
 detector.anchors = anchors
 detector.loss = head_loss

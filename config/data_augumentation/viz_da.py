@@ -102,13 +102,20 @@ data.train_augmentation = [
     #                                             num_add_obj=3,
     #                                             use_z_jitter=True),),
     edict(type_name='ConvertToFloat'),
-    edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
+    edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, 
+                                                         contrast_lower=1.0,  # 0.5
+                                                         contrast_upper=1.0, # 1.5 
+                                                         saturation_lower=1.0, # 0.5
+                                                         saturation_upper=1.0,  #1.5
+                                                         hue_delta=0.0, # 18
+                                                         brightness_delta=32)), # 32
+    # edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
     # edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
-    edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
+    # edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
     # edict(type_name='RandomJit', keywords=edict(jit_upper_bound=0.2)),
     # edict(type_name='RandomZoom', keywords=edict(scale_range=(0.8, 0.8))), # (0.8, 1.2)
     # edict(type_name='CutOut', keywords=edict(num_hole=4, mask_width=32)),
-    # edict(type_name='RandomMirror', keywords=edict(mirror_prob=0.5)),
+    # edict(type_name='RandomMirror', keywords=edict(mirror_prob=1.0)),
     # edict(type_name='Normalize', keywords=edict(mean=data.augmentation.rgb_mean, stds=data.augmentation.rgb_std))
 ]
 data.test_augmentation = [
