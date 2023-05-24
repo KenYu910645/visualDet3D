@@ -13,8 +13,11 @@ from kitti.evaluate import evaluate
 # # GAC
 # PRED_PATH = "/home/lab530/KenYu/visualDet3D/baseline_exp/Mono3D/output/validation/data/"
 # # SMOKE
-PRED_PATH = "/home/lab530/KenYu/SMOKE/tools/logs/inference/kitti_train/data" 
+# PRED_PATH = "/home/lab530/KenYu/SMOKE/tools/logs/inference/kitti_train/data" 
 # "/home/lab530/KenYu/SMOKE/tools/logs/inference/kitti_train/data/"
+
+PRED_PATH = "/home/lab530/KenYu/MonoGRNet/outputs/kittiBox/val_out/val_result"
+# PRED_PATH = "/home/lab530/KenYu/mmdetection/yolov3_exps/output"
 
 # PRED_PATH = "/home/lab530/KenYu/visualDet3D/exp_output/attention/Mono3D/output/validation/data"
 # Add by spiderkiller to allow utilize evaluation function for other directory

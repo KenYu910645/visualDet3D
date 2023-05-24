@@ -96,14 +96,14 @@ data.augmentation = edict(
 )
 
 data.train_augmentation = [
-    edict(type_name='CopyPaste', keywords=edict(use_seg=True, 
-                                                solid_ratio=1.0, 
-                                                use_scene_aware=True,
-                                                num_add_obj=3,
-                                                use_z_jitter=True),),
+    # edict(type_name='CopyPaste', keywords=edict(use_seg=True, 
+    #                                             solid_ratio=1.0, 
+    #                                             use_scene_aware=True,
+    #                                             num_add_obj=3,
+    #                                             use_z_jitter=True),),
     edict(type_name='ConvertToFloat'),
-    # edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
-    edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
+    edict(type_name='PhotometricDistort', keywords=edict(distort_prob=1.0, contrast_lower=0.5, contrast_upper=1.5, saturation_lower=0.5, saturation_upper=1.5, hue_delta=18.0, brightness_delta=32)),
+    # edict(type_name='CropTop', keywords=edict(crop_top_index=data.augmentation.crop_top)),
     edict(type_name='Resize', keywords=edict(size=data.augmentation.cropSize)),
     # edict(type_name='RandomJit', keywords=edict(jit_upper_bound=0.2)),
     # edict(type_name='RandomZoom', keywords=edict(scale_range=(0.8, 0.8))), # (0.8, 1.2)

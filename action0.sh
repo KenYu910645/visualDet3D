@@ -1,16 +1,19 @@
-#EXP_NAME=('dialate_1_2_3')
-#for exp_name in "${EXP_NAME[@]}"
-#do
-#    ./launchers/det_precompute.sh config/pac/"$exp_name".py train
-#    ./launchers/train.sh config/pac/"$exp_name".py 1 "$exp_name"
-#done
 
-EXP_NAME=('pac_dx48_dy48' 'pac_dx80_dy80' 'pac_dx96_dy96' 'pac_dx112_dy112' 'pac_dx144_dy144' 'pac_dx160_dy160')
-for exp_name in "${EXP_NAME[@]}"
-do
-    ./launchers/det_precompute.sh config/pac_theta_edition/"$exp_name".py train
-    ./launchers/train.sh config/pac_theta_edition/"$exp_name".py 1 "$exp_name"
-done
+# ./launchers/det_precompute.sh config/das/das_kmeans_anchor_32.py train
+# ./launchers/train.sh config/das/das_kmeans_anchor_32.py 1 das_kmeans_anchor_32
+
+# ./launchers/det_precompute.sh config/baseline.py train
+# ./launchers/train.sh config/baseline.py 1 baseline
+
+# ./launchers/det_precompute.sh config/data_augumentation/add_noise.py train
+# ./launchers/train.sh config/data_augumentation/add_noise.py 1 add_noise
+
+# EXP_NAME=('pac_dx48_dy48' 'pac_dx80_dy80' 'pac_dx96_dy96' 'pac_dx112_dy112' 'pac_dx144_dy144' 'pac_dx160_dy160')
+# for exp_name in "${EXP_NAME[@]}"
+# do
+#     ./launchers/det_precompute.sh config/pac_theta_edition/"$exp_name".py train
+#     ./launchers/train.sh config/pac_theta_edition/"$exp_name".py 1 "$exp_name"
+# done
 
 # EXP_NAME=('baseline')
 
@@ -25,9 +28,12 @@ done
 
 # data_augumentation/.py
 
-# # Evaluation on validation set
-# ./launchers/det_precompute.sh config/pac/pac_2d_offset.py train
-# ./launchers/eval.sh config/pac/pac_2d_offset.py 1 /home/lab530/KenYu/visualDet3D/exp_output/pac/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
+# Evaluation on validation set
+./launchers/det_precompute.sh config/das/das_kmeans_anchor_32.py train
+./launchers/eval.sh config/das/das_kmeans_anchor_32.py 0 /home/lab530/KenYu/visualDet3D/exp_output/das/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
+
+# ./launchers/det_precompute.sh config/baseline.py train
+# ./launchers/eval.sh config/baseline.py 0 /home/lab530/KenYu/visualDet3D/exp_output/baseline_gac_original/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
 
 # ./launchers/det_precompute.sh config/loss/noam_combine_regress.py train
 # ./launchers/eval.sh config/loss/noam_combine_regress.py 1 /home/lab530/KenYu/visualDet3D/exp_output/loss/Mono3D/checkpoint/GroundAwareYolo3D_latest.pth validation
